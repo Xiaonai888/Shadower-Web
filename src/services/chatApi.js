@@ -2,7 +2,7 @@ import { API_BASE_URL } from "../config/api";
 
 async function request(path, options = {}) {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 15000);
+  const timeout = window.setTimeout(() => controller.abort(), 65000);
 
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -19,7 +19,7 @@ async function request(path, options = {}) {
     return data;
   } catch (error) {
     if (error.name === "AbortError") {
-      throw new Error("Backend took too long to respond");
+      throw new Error("Shadower took too long to respond");
     }
 
     throw error;
