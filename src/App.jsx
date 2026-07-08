@@ -1,31 +1,37 @@
 import { useEffect, useRef, useState } from "react";
+import ChatWorkspace from "./components/ChatWorkspace";
+import ComingSoon from "./components/ComingSoon";
+import RightPanel from "./components/RightPanel";
+import Sidebar from "./components/Sidebar";
+import Topbar from "./components/Topbar";
+import { topTabs } from "./data/uiData";
 import { checkBackendHealth, sendChatMessage } from "./services/chatApi";
 
-const tabs = [
-  { id: "chat", label: "Chat", icon: "✦" },
-  { id: "story", label: "Manage Story", icon: "▤" },
-  { id: "manga", label: "Manga Story", icon: "◫" },
-  { id: "voice", label: "Clone Voice", icon: "◉" }
-];
+function getStoredTheme() {
+  try {
+    return localStorage.getItem("shadower-theme") || "light";
+  } catch {
+    return "light";
+  }
+}
 
-const welcomeMessage = {
-  id: "welcome",
-  role: "assistant",
-  text: "សួស្តី! ខ្ញុំឈ្មោះ Shadower។ សាកល្បងនិយាយ សួស្តី, Hi ឬ Hello មកខ្ញុំ។"
-};
-
-const suggestions = ["សួស្តី", "Hi", "Hello"];
+function formatTime() {
+  return new Intl.DateTimeFormat([], {
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date());
+}
 
 function App() {
-  const [activeTab, setActiveTab] = useState("chat");
-  const [messages, setMessages] = useState([welcomeMessage]);
-  const [input, setInput] = useState("");
-  const [isSending, setIsSending] = useState(false);
+  const [activeView, setActiveView] = useState("chat");
   const [backendStatus, setBackendStatus] = useState("checking");
   const [error, setError] = useState("");
+  const [input, setInput] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [theme, setTheme] = useState(getStoredTheme);
+  const inputRef = useRef(null);
   const messagesEndRef = useRef(null);
-
-  const activeTabData = tabs.find((tab) => tab.id === activeTab);
 
   const refreshBackendStatus = async () => {
     setBackendStatus("checking");
@@ -43,24 +49,50 @@ function App() {
   }, []);
 
   useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+
+    try {
+      localStorage.setItem("shadower-theme", theme);
+    } catch {
+      return;
+    }
+  }, [theme]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
 
-  const submitMessage = async (value) => {
-    const text = value.trim();
+  const startNewChat = () => {
+    setActiveView("chat");
+    setMessages([]);
+    setInput("");
+    setError("");
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const changeView = (viewId) => {
+    setActiveView(viewId);
+  };
+
+  const submitMessage = async (rawMessage) => {
+    const text = rawMessage.trim();
 
     if (!text || isSending) return;
 
-    const userMessage = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      text
-    };
-
-    setMessages((current) => [...current, userMessage]);
+    setActiveView("chat");
     setInput("");
     setError("");
     setIsSending(true);
+
+    setMessages((current) => [
+      ...current,
+      {
+        id: `user-${Date.now()}`,
+        role: "user",
+        text,
+        time: formatTime()
+      }
+    ]);
 
     try {
       const data = await sendChatMessage(text);
@@ -70,7 +102,8 @@ function App() {
         {
           id: `assistant-${Date.now()}`,
           role: "assistant",
-          text: data.reply
+          text: data.reply || "Shadower did not return a reply.",
+          time: formatTime()
         }
       ]);
 
@@ -95,166 +128,58 @@ function App() {
     }
   };
 
-  const clearChat = () => {
-    setMessages([welcomeMessage]);
-    setInput("");
-    setError("");
+  const handlePrompt = (prompt) => {
+    setActiveView("chat");
+    setInput(prompt);
+    window.setTimeout(() => inputRef.current?.focus(), 0);
   };
 
-  const statusText = {
-    checking: "Checking backend",
-    online: "Backend online",
-    offline: "Backend offline"
-  }[backendStatus];
+  const selectedTab = topTabs.find((item) => item.id === activeView);
 
   return (
-    <div className="app">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">S</div>
-          <div>
-            <strong>Shadower</strong>
-            <span>Private AI Studio</span>
-          </div>
-        </div>
+    <div className="app-shell">
+      <Sidebar
+        activeView={activeView}
+        onNewChat={startNewChat}
+        onViewChange={changeView}
+      />
 
-        <nav>
-          {tabs.map((tab) => (
-            <button
-              className={activeTab === tab.id ? "nav-button active" : "nav-button"}
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              type="button"
-            >
-              <span className="nav-icon">{tab.icon}</span>
-              <span>{tab.label}</span>
-              {tab.id !== "chat" && <small>Coming soon</small>}
-            </button>
-          ))}
-        </nav>
+      <section className="main-shell">
+        <Topbar
+          activeView={activeView}
+          backendStatus={backendStatus}
+          onRefreshBackend={refreshBackendStatus}
+          onThemeChange={setTheme}
+          onViewChange={changeView}
+          theme={theme}
+        />
 
-        <div className="private-badge">
-          <span>●</span>
-          Private workspace
-        </div>
-      </aside>
-
-      {activeTab === "chat" ? (
-        <main className="chat-page">
-          <header className="chat-header">
-            <div>
-              <span className="eyebrow">NOVEL WRITING ASSISTANT</span>
-              <h1>Chat with Shadower</h1>
-            </div>
-
-            <div className="header-actions">
-              <button className="clear-button" onClick={clearChat} type="button">
-                Clear chat
-              </button>
-              <button
-                className={`status ${backendStatus}`}
-                onClick={refreshBackendStatus}
-                type="button"
-              >
-                <span />
-                {statusText}
-              </button>
-            </div>
-          </header>
-
-          <section className="messages">
-            <div className="message-list">
-              {messages.length === 1 && (
-                <div className="welcome-panel">
-                  <div className="welcome-symbol">✦</div>
-                  <span className="eyebrow">FIRST CHAT TEST</span>
-                  <h2>Start a conversation</h2>
-                  <p>
-                    Shadower កំពុងសាកល្បងការតភ្ជាប់ទៅ Backend ដំបូង។
-                    ជ្រើសពាក្យមួយខាងក្រោម។
-                  </p>
-                  <div className="suggestions">
-                    {suggestions.map((suggestion) => (
-                      <button
-                        disabled={isSending}
-                        key={suggestion}
-                        onClick={() => submitMessage(suggestion)}
-                        type="button"
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {messages.map((message) => (
-                <article className={`message ${message.role}`} key={message.id}>
-                  <div className="avatar">
-                    {message.role === "assistant" ? "S" : "U"}
-                  </div>
-                  <div className="message-content">
-                    <strong>
-                      {message.role === "assistant" ? "Shadower" : "You"}
-                    </strong>
-                    <p>{message.text}</p>
-                  </div>
-                </article>
-              ))}
-
-              {isSending && (
-                <article className="message assistant typing-message">
-                  <div className="avatar">S</div>
-                  <div className="message-content">
-                    <strong>Shadower</strong>
-                    <div className="typing-dots" aria-label="Shadower is typing">
-                      <span />
-                      <span />
-                      <span />
-                    </div>
-                  </div>
-                </article>
-              )}
-
-              {error && (
-                <div className="error-banner">
-                  <div>
-                    <strong>Connection error</strong>
-                    <p>{error}</p>
-                  </div>
-                  <button onClick={refreshBackendStatus} type="button">
-                    Check again
-                  </button>
-                </div>
-              )}
-
-              <div ref={messagesEndRef} />
-            </div>
-          </section>
-
-          <form className="composer" onSubmit={handleSubmit}>
-            <textarea
-              aria-label="Message Shadower"
-              disabled={isSending}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="សរសេរ សួស្តី, Hi ឬ Hello..."
-              rows="1"
-              value={input}
+        <div className={`workspace-grid ${activeView !== "chat" ? "single-column" : ""}`}>
+          {activeView === "chat" ? (
+            <>
+              <ChatWorkspace
+                error={error}
+                input={input}
+                inputRef={inputRef}
+                isSending={isSending}
+                messages={messages}
+                messagesEndRef={messagesEndRef}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={handleKeyDown}
+                onRetry={() => submitMessage(messages.at(-1)?.text || input)}
+                onSendSuggestion={submitMessage}
+                onSubmit={handleSubmit}
+              />
+              <RightPanel onPrompt={handlePrompt} />
+            </>
+          ) : (
+            <ComingSoon
+              icon={selectedTab?.icon || "sparkles"}
+              title={selectedTab?.label || "Coming soon"}
             />
-            <button disabled={!input.trim() || isSending} type="submit">
-              {isSending ? "Sending..." : "Send"}
-            </button>
-          </form>
-        </main>
-      ) : (
-        <main className="coming-soon">
-          <div className="coming-icon">{activeTabData?.icon}</div>
-          <span className="eyebrow">SHADOWER</span>
-          <h1>{activeTabData?.label}</h1>
-          <p>Coming soon</p>
-        </main>
-      )}
+          )}
+        </div>
+      </section>
     </div>
   );
 }
