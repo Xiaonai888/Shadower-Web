@@ -32,29 +32,24 @@ function useOutsideClose(open, onClose) {
 }
 
 function ModelSelector({
+  available,
   disabled,
   loading,
+  models,
   onSelect,
-  providers,
   selectedModel,
-  selectedProvider
+  status
 }) {
   const [open, setOpen] = useState(false);
   const ref = useOutsideClose(open, () => setOpen(false));
-
-  const selected = useMemo(() => {
-    const provider = providers.find((item) => item.id === selectedProvider);
-    const model = provider?.models?.find((item) => item.id === selectedModel);
-
-    return {
-      provider,
-      model
-    };
-  }, [providers, selectedModel, selectedProvider]);
+  const selected = useMemo(
+    () => models.find((model) => model.id === selectedModel),
+    [models, selectedModel]
+  );
 
   const buttonLabel = loading
     ? "Loading models"
-    : selected.model?.label || selectedModel || "Choose model";
+    : selected?.label || selectedModel || "Choose model";
 
   return (
     <div className="model-selector" ref={ref}>
@@ -67,7 +62,7 @@ function ModelSelector({
         type="button"
       >
         <span className="model-trigger-copy">
-          <small>{selected.provider?.label || "AI"}</small>
+          <small>My AI</small>
           <strong>{buttonLabel}</strong>
         </span>
         <Icon name="chevronDown" size={13} />
@@ -75,55 +70,51 @@ function ModelSelector({
 
       {open && (
         <div className="model-menu" role="menu">
-          <div className="selector-heading">AI Provider & Model</div>
+          <div className="selector-heading">My AI Model</div>
 
-          {providers.map((provider) => (
-            <section className="provider-group" key={provider.id}>
-              <div className="provider-heading">
-                <span>
-                  <strong>{provider.label}</strong>
-                  <small>{provider.status}</small>
-                </span>
-                <span
-                  className={`provider-status ${
-                    provider.available ? "online" : "offline"
-                  }`}
-                />
+          <section className="provider-group">
+            <div className="provider-heading">
+              <span>
+                <strong>My AI</strong>
+                <small>{status}</small>
+              </span>
+              <span
+                className={`provider-status ${
+                  available ? "online" : "offline"
+                }`}
+              />
+            </div>
+
+            {models.length ? (
+              <div className="provider-models">
+                {models.map((model) => {
+                  const active = model.id === selectedModel;
+
+                  return (
+                    <button
+                      className={active ? "active" : ""}
+                      disabled={!available}
+                      key={model.id}
+                      onClick={() => {
+                        onSelect(model.id);
+                        setOpen(false);
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <span>
+                        <strong>{model.label}</strong>
+                        {model.detail && <small>{model.detail}</small>}
+                      </span>
+                      {active && <span className="selection-check">✓</span>}
+                    </button>
+                  );
+                })}
               </div>
-
-              {provider.models?.length ? (
-                <div className="provider-models">
-                  {provider.models.map((model) => {
-                    const active =
-                      provider.id === selectedProvider &&
-                      model.id === selectedModel;
-
-                    return (
-                      <button
-                        className={active ? "active" : ""}
-                        disabled={!provider.available}
-                        key={`${provider.id}-${model.id}`}
-                        onClick={() => {
-                          onSelect(provider.id, model.id);
-                          setOpen(false);
-                        }}
-                        role="menuitem"
-                        type="button"
-                      >
-                        <span>
-                          <strong>{model.label}</strong>
-                          {model.detail && <small>{model.detail}</small>}
-                        </span>
-                        {active && <span className="selection-check">✓</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="provider-empty">No model is available.</p>
-              )}
-            </section>
-          ))}
+            ) : (
+              <p className="provider-empty">No My AI model is available.</p>
+            )}
+          </section>
         </div>
       )}
     </div>

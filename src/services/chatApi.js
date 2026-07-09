@@ -39,7 +39,7 @@ export function getChatModels() {
 export function sendChatMessage(
   message,
   history = [],
-  { provider, model, intelligence }
+  { model, intelligence }
 ) {
   return request("/api/chat", {
     method: "POST",
@@ -49,7 +49,6 @@ export function sendChatMessage(
     body: JSON.stringify({
       message,
       history,
-      provider,
       model,
       intelligence
     })

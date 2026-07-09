@@ -12,8 +12,17 @@ import {
 } from "./services/chatApi";
 
 const CHAT_STORAGE_KEY = "shadower-current-chat";
-const AI_SELECTION_KEY = "shadower-ai-selection";
+const MY_AI_SELECTION_KEY = "shadower-my-ai-selection";
+const LEGACY_SELECTION_KEY = "shadower-ai-selection";
 const MAX_STORED_MESSAGES = 50;
+
+const EMPTY_MY_AI = {
+  id: "my-ai",
+  label: "My AI",
+  available: false,
+  status: "My AI model is not connected",
+  models: []
+};
 
 function getStoredTheme() {
   try {
@@ -25,11 +34,11 @@ function getStoredTheme() {
 
 function getStoredSelection() {
   try {
-    const stored = JSON.parse(localStorage.getItem(AI_SELECTION_KEY) || "{}");
+    const stored = JSON.parse(
+      localStorage.getItem(MY_AI_SELECTION_KEY) || "{}"
+    );
 
     return {
-      provider:
-        typeof stored.provider === "string" ? stored.provider : "my-ai",
       model: typeof stored.model === "string" ? stored.model : "",
       intelligence:
         typeof stored.intelligence === "string"
@@ -38,7 +47,6 @@ function getStoredSelection() {
     };
   } catch {
     return {
-      provider: "my-ai",
       model: "",
       intelligence: "high"
     };
@@ -70,8 +78,12 @@ function getStoredMessages() {
         role: item.role,
         text: item.text,
         time: typeof item.time === "string" ? item.time : "",
-        provider: typeof item.provider === "string" ? item.provider : "",
-        model: typeof item.model === "string" ? item.model : "",
+        model:
+          item.provider && item.provider !== "my-ai"
+            ? ""
+            : typeof item.model === "string"
+              ? item.model
+              : "",
         intelligence:
           typeof item.intelligence === "string" ? item.intelligence : ""
       }));
@@ -115,41 +127,31 @@ function toApiHistory(messages) {
     }));
 }
 
-function resolveSelection(current, providers) {
-  const exactProvider = providers.find(
-    (provider) => provider.id === current.provider
-  );
-  const exactModel = exactProvider?.models?.find(
-    (model) => model.id === current.model
-  );
-
-  if (exactProvider?.available && exactModel) {
-    return current;
+function normalizeMyAI(record) {
+  if (!record || record.id !== "my-ai") {
+    return { ...EMPTY_MY_AI };
   }
 
-  const availableProvider = providers.find(
-    (provider) => provider.available && provider.models?.length
-  );
+  return {
+    id: "my-ai",
+    label: "My AI",
+    available: Boolean(record.available),
+    status:
+      typeof record.status === "string" && record.status.trim()
+        ? record.status
+        : EMPTY_MY_AI.status,
+    models: Array.isArray(record.models) ? record.models : []
+  };
+}
 
-  if (availableProvider) {
-    return {
-      ...current,
-      provider: availableProvider.id,
-      model: availableProvider.models[0].id
-    };
+function resolveModel(currentModel, myAI) {
+  const models = Array.isArray(myAI.models) ? myAI.models : [];
+
+  if (models.some((model) => model.id === currentModel)) {
+    return currentModel;
   }
 
-  const firstProvider = providers.find((provider) => provider.models?.length);
-
-  if (firstProvider) {
-    return {
-      ...current,
-      provider: firstProvider.id,
-      model: firstProvider.models[0].id
-    };
-  }
-
-  return current;
+  return models[0]?.id || "";
 }
 
 function App() {
@@ -169,11 +171,8 @@ function App() {
   const [isSending, setIsSending] = useState(false);
   const [messages, setMessages] = useState(getStoredMessages);
   const [modelsLoading, setModelsLoading] = useState(true);
-  const [providers, setProviders] = useState([]);
+  const [myAI, setMyAI] = useState(EMPTY_MY_AI);
   const [selectedModel, setSelectedModel] = useState(storedSelection.model);
-  const [selectedProvider, setSelectedProvider] = useState(
-    storedSelection.provider
-  );
   const [theme, setTheme] = useState(getStoredTheme);
   const inputRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -194,32 +193,23 @@ function App() {
 
     try {
       const data = await getChatModels();
-      const nextProviders = Array.isArray(data.providers)
-        ? data.providers
-        : [];
+      const records = Array.isArray(data.providers) ? data.providers : [];
+      const nextMyAI = normalizeMyAI(
+        records.find((record) => record.id === "my-ai")
+      );
 
-      setProviders(nextProviders);
+      setMyAI(nextMyAI);
+      setSelectedModel((current) => resolveModel(current, nextMyAI));
 
       if (Array.isArray(data.intelligenceLevels)) {
         setIntelligenceLevels(data.intelligenceLevels);
       }
 
-      const nextSelection = resolveSelection(
-        {
-          provider: selectedProvider,
-          model: selectedModel,
-          intelligence
-        },
-        nextProviders
-      );
-
-      setSelectedProvider(nextSelection.provider);
-      setSelectedModel(nextSelection.model);
       setError("");
     } catch (requestError) {
-      setError(
-        requestError.message || "Unable to load AI providers and models"
-      );
+      setMyAI({ ...EMPTY_MY_AI });
+      setSelectedModel("");
+      setError(requestError.message || "Unable to load My AI models");
     } finally {
       setModelsLoading(false);
     }
@@ -242,10 +232,10 @@ function App() {
 
   useEffect(() => {
     try {
+      localStorage.removeItem(LEGACY_SELECTION_KEY);
       localStorage.setItem(
-        AI_SELECTION_KEY,
+        MY_AI_SELECTION_KEY,
         JSON.stringify({
-          provider: selectedProvider,
           model: selectedModel,
           intelligence
         })
@@ -253,7 +243,7 @@ function App() {
     } catch {
       return;
     }
-  }, [intelligence, selectedModel, selectedProvider]);
+  }, [intelligence, selectedModel]);
 
   useEffect(() => {
     try {
@@ -274,18 +264,10 @@ function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
 
-  const selectedProviderRecord = providers.find(
-    (provider) => provider.id === selectedProvider
-  );
   const selectedAvailable = Boolean(
-    selectedProviderRecord?.available &&
-      selectedProviderRecord.models?.some(
-        (model) => model.id === selectedModel
-      )
+    myAI.available &&
+      myAI.models.some((model) => model.id === selectedModel)
   );
-  const selectedProviderLabel =
-    selectedProviderRecord?.label ||
-    (selectedProvider === "openai" ? "OpenAI" : "My AI");
 
   const startNewChat = () => {
     setActiveView("chat");
@@ -299,8 +281,7 @@ function App() {
     setActiveView(viewId);
   };
 
-  const handleModelSelect = (provider, model) => {
-    setSelectedProvider(provider);
+  const handleModelSelect = (model) => {
     setSelectedModel(model);
     setError("");
   };
@@ -311,7 +292,6 @@ function App() {
       history = messages,
       appendUser = true,
       selection = {
-        provider: selectedProvider,
         model: selectedModel,
         intelligence
       }
@@ -321,18 +301,12 @@ function App() {
 
     if (!text || isSending) return;
 
-    const providerRecord = providers.find(
-      (provider) => provider.id === selection.provider
-    );
-    const modelExists = providerRecord?.models?.some(
+    const modelExists = myAI.models.some(
       (model) => model.id === selection.model
     );
 
-    if (!providerRecord?.available || !modelExists) {
-      setError(
-        providerRecord?.status ||
-          "The selected AI provider or model is unavailable."
-      );
+    if (!myAI.available || !modelExists) {
+      setError(myAI.status || "The selected My AI model is unavailable.");
       return;
     }
 
@@ -361,7 +335,6 @@ function App() {
           "assistant",
           data.reply || "Shadower did not return a reply.",
           {
-            provider: data.provider || selection.provider,
             model: data.model || selection.model,
             intelligence: data.intelligence || selection.intelligence
           }
@@ -396,13 +369,11 @@ function App() {
     const message = messages[lastUserIndex];
     const history = messages.slice(0, lastUserIndex);
     const selection = {
-      provider: message.provider || selectedProvider,
       model: message.model || selectedModel,
       intelligence: message.intelligence || intelligence
     };
 
     setMessages(messages.slice(0, lastUserIndex + 1));
-    setSelectedProvider(selection.provider);
     setSelectedModel(selection.model);
     setIntelligence(selection.intelligence);
     submitMessage(message.text, {
@@ -469,7 +440,10 @@ function App() {
                 isSending={isSending}
                 messages={messages}
                 messagesEndRef={messagesEndRef}
+                models={myAI.models}
                 modelsLoading={modelsLoading}
+                myAIAvailable={myAI.available}
+                myAIStatus={myAI.status}
                 onChange={(event) => setInput(event.target.value)}
                 onIntelligenceChange={setIntelligence}
                 onKeyDown={handleKeyDown}
@@ -477,11 +451,8 @@ function App() {
                 onRetry={retryLastMessage}
                 onSendSuggestion={submitMessage}
                 onSubmit={handleSubmit}
-                providers={providers}
                 selectedAvailable={selectedAvailable}
                 selectedModel={selectedModel}
-                selectedProvider={selectedProvider}
-                selectedProviderLabel={selectedProviderLabel}
               />
               <RightPanel onPrompt={handlePrompt} />
             </>

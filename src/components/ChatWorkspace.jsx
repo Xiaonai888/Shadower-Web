@@ -74,8 +74,7 @@ function MessageList({
   isSending,
   messages,
   messagesEndRef,
-  onRetry,
-  selectedProviderLabel
+  onRetry
 }) {
   return (
     <div className="conversation">
@@ -92,10 +91,9 @@ function MessageList({
             <div className="message-meta">
               <strong>{message.role === "assistant" ? "Shadower" : "You"}</strong>
               <time>{message.time}</time>
-              {message.role === "assistant" && message.provider && (
-                <span className={`ai-provider-badge ${message.provider}`}>
-                  {message.provider === "my-ai" ? "My AI" : "OpenAI"}
-                  {message.model ? ` · ${message.model}` : ""}
+              {message.role === "assistant" && message.model && (
+                <span className="ai-model-badge">
+                  My AI · {message.model}
                 </span>
               )}
             </div>
@@ -121,7 +119,7 @@ function MessageList({
           <div className="message-stack">
             <div className="message-meta">
               <strong>Shadower</strong>
-              <span>{selectedProviderLabel} is thinking</span>
+              <span>My AI is thinking</span>
             </div>
             <div className="message-bubble typing-bubble">
               <span />
@@ -155,16 +153,17 @@ function Composer({
   intelligence,
   intelligenceLevels,
   isSending,
+  models,
   modelsLoading,
+  myAIAvailable,
+  myAIStatus,
   onChange,
   onIntelligenceChange,
   onKeyDown,
   onModelSelect,
   onSubmit,
-  providers,
   selectedAvailable,
-  selectedModel,
-  selectedProvider
+  selectedModel
 }) {
   return (
     <form className="message-composer" onSubmit={onSubmit}>
@@ -206,12 +205,13 @@ function Composer({
 
         <div className="send-area">
           <ModelSelector
+            available={myAIAvailable}
             disabled={isSending}
             loading={modelsLoading}
+            models={models}
             onSelect={onModelSelect}
-            providers={providers}
             selectedModel={selectedModel}
-            selectedProvider={selectedProvider}
+            status={myAIStatus}
           />
           <IntelligenceSelector
             disabled={isSending}
@@ -247,7 +247,10 @@ function ChatWorkspace({
   isSending,
   messages,
   messagesEndRef,
+  models,
   modelsLoading,
+  myAIAvailable,
+  myAIStatus,
   onChange,
   onIntelligenceChange,
   onKeyDown,
@@ -255,11 +258,8 @@ function ChatWorkspace({
   onRetry,
   onSendSuggestion,
   onSubmit,
-  providers,
   selectedAvailable,
-  selectedModel,
-  selectedProvider,
-  selectedProviderLabel
+  selectedModel
 }) {
   return (
     <main className="chat-workspace">
@@ -276,7 +276,6 @@ function ChatWorkspace({
             messages={messages}
             messagesEndRef={messagesEndRef}
             onRetry={onRetry}
-            selectedProviderLabel={selectedProviderLabel}
           />
         )}
       </div>
@@ -287,16 +286,17 @@ function ChatWorkspace({
         intelligence={intelligence}
         intelligenceLevels={intelligenceLevels}
         isSending={isSending}
+        models={models}
         modelsLoading={modelsLoading}
+        myAIAvailable={myAIAvailable}
+        myAIStatus={myAIStatus}
         onChange={onChange}
         onIntelligenceChange={onIntelligenceChange}
         onKeyDown={onKeyDown}
         onModelSelect={onModelSelect}
         onSubmit={onSubmit}
-        providers={providers}
         selectedAvailable={selectedAvailable}
         selectedModel={selectedModel}
-        selectedProvider={selectedProvider}
       />
     </main>
   );
