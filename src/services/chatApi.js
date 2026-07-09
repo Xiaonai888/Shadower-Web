@@ -2,7 +2,7 @@ import { API_BASE_URL } from "../config/api";
 
 async function request(path, options = {}) {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 65000);
+  const timeout = window.setTimeout(() => controller.abort(), 150000);
 
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -32,7 +32,15 @@ export function checkBackendHealth() {
   return request("/health");
 }
 
-export function sendChatMessage(message, history = []) {
+export function getChatModels() {
+  return request("/api/chat/models");
+}
+
+export function sendChatMessage(
+  message,
+  history = [],
+  { provider, model, intelligence }
+) {
   return request("/api/chat", {
     method: "POST",
     headers: {
@@ -40,7 +48,10 @@ export function sendChatMessage(message, history = []) {
     },
     body: JSON.stringify({
       message,
-      history
+      history,
+      provider,
+      model,
+      intelligence
     })
   });
 }

@@ -1,4 +1,8 @@
 import Icon from "./Icon";
+import {
+  IntelligenceSelector,
+  ModelSelector
+} from "./ModelSelector";
 import { greetingSuggestions } from "../data/uiData";
 
 function WelcomeState({ isSending, onSendSuggestion }) {
@@ -65,7 +69,14 @@ function WelcomeState({ isSending, onSendSuggestion }) {
   );
 }
 
-function MessageList({ error, isSending, messages, messagesEndRef, onRetry }) {
+function MessageList({
+  error,
+  isSending,
+  messages,
+  messagesEndRef,
+  onRetry,
+  selectedProviderLabel
+}) {
   return (
     <div className="conversation">
       {messages.map((message) => (
@@ -81,6 +92,12 @@ function MessageList({ error, isSending, messages, messagesEndRef, onRetry }) {
             <div className="message-meta">
               <strong>{message.role === "assistant" ? "Shadower" : "You"}</strong>
               <time>{message.time}</time>
+              {message.role === "assistant" && message.provider && (
+                <span className={`ai-provider-badge ${message.provider}`}>
+                  {message.provider === "my-ai" ? "My AI" : "OpenAI"}
+                  {message.model ? ` · ${message.model}` : ""}
+                </span>
+              )}
             </div>
             <div className="message-bubble">
               <p>{message.text}</p>
@@ -104,7 +121,7 @@ function MessageList({ error, isSending, messages, messagesEndRef, onRetry }) {
           <div className="message-stack">
             <div className="message-meta">
               <strong>Shadower</strong>
-              <span>Thinking</span>
+              <span>{selectedProviderLabel} is thinking</span>
             </div>
             <div className="message-bubble typing-bubble">
               <span />
@@ -135,10 +152,19 @@ function MessageList({ error, isSending, messages, messagesEndRef, onRetry }) {
 function Composer({
   input,
   inputRef,
+  intelligence,
+  intelligenceLevels,
   isSending,
+  modelsLoading,
   onChange,
+  onIntelligenceChange,
   onKeyDown,
-  onSubmit
+  onModelSelect,
+  onSubmit,
+  providers,
+  selectedAvailable,
+  selectedModel,
+  selectedProvider
 }) {
   return (
     <form className="message-composer" onSubmit={onSubmit}>
@@ -179,11 +205,29 @@ function Composer({
         </div>
 
         <div className="send-area">
-          <kbd>⌘ ↵</kbd>
+          <ModelSelector
+            disabled={isSending}
+            loading={modelsLoading}
+            onSelect={onModelSelect}
+            providers={providers}
+            selectedModel={selectedModel}
+            selectedProvider={selectedProvider}
+          />
+          <IntelligenceSelector
+            disabled={isSending}
+            intelligence={intelligence}
+            levels={intelligenceLevels}
+            onSelect={onIntelligenceChange}
+          />
           <button
             aria-label="Send message"
             className="send-button"
-            disabled={!input.trim() || isSending}
+            disabled={
+              !input.trim() ||
+              isSending ||
+              !selectedModel ||
+              !selectedAvailable
+            }
             type="submit"
           >
             <Icon name="send" size={19} />
@@ -198,14 +242,24 @@ function ChatWorkspace({
   error,
   input,
   inputRef,
+  intelligence,
+  intelligenceLevels,
   isSending,
   messages,
   messagesEndRef,
+  modelsLoading,
   onChange,
+  onIntelligenceChange,
   onKeyDown,
+  onModelSelect,
   onRetry,
   onSendSuggestion,
-  onSubmit
+  onSubmit,
+  providers,
+  selectedAvailable,
+  selectedModel,
+  selectedProvider,
+  selectedProviderLabel
 }) {
   return (
     <main className="chat-workspace">
@@ -222,6 +276,7 @@ function ChatWorkspace({
             messages={messages}
             messagesEndRef={messagesEndRef}
             onRetry={onRetry}
+            selectedProviderLabel={selectedProviderLabel}
           />
         )}
       </div>
@@ -229,10 +284,19 @@ function ChatWorkspace({
       <Composer
         input={input}
         inputRef={inputRef}
+        intelligence={intelligence}
+        intelligenceLevels={intelligenceLevels}
         isSending={isSending}
+        modelsLoading={modelsLoading}
         onChange={onChange}
+        onIntelligenceChange={onIntelligenceChange}
         onKeyDown={onKeyDown}
+        onModelSelect={onModelSelect}
         onSubmit={onSubmit}
+        providers={providers}
+        selectedAvailable={selectedAvailable}
+        selectedModel={selectedModel}
+        selectedProvider={selectedProvider}
       />
     </main>
   );
