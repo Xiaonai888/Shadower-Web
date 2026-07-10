@@ -179,29 +179,7 @@ function Composer({
       />
 
       <div className="composer-toolbar">
-        <div className="composer-tools">
-          <button aria-label="Attach file" type="button">
-            <Icon name="paperclip" size={18} />
-          </button>
-          <button aria-label="Language" type="button">
-            <Icon name="globe" size={18} />
-          </button>
-          <button className="composer-select" type="button">
-            <Icon name="book" size={16} />
-            <span>Book</span>
-            <Icon name="chevronDown" size={13} />
-          </button>
-          <button className="composer-select" type="button">
-            <Icon name="chat" size={16} />
-            <span>Tone</span>
-            <Icon name="chevronDown" size={13} />
-          </button>
-          <button className="composer-select" type="button">
-            <Icon name="settings" size={16} />
-            <span>Length</span>
-            <Icon name="chevronDown" size={13} />
-          </button>
-        </div>
+        
 
         <div className="send-area">
           <ModelSelector
