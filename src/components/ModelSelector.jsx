@@ -121,16 +121,47 @@ function ModelSelector({
   );
 }
 
+function getPublicModelLabel(model, index = 0) {
+  return model?.publicLabel || `Shadow ${index + 1}.0`;
+}
+
 function IntelligenceSelector({
+  available,
   disabled,
   intelligence,
-  levels,
-  onSelect
+  levels = [],
+  loading,
+  models = [],
+  onModelSelect,
+  onSelect,
+  selectedModel
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useOutsideClose(open, () => setOpen(false));
+  const [modelsOpen, setModelsOpen] = useState(false);
+
+  const ref = useOutsideClose(open, () => {
+    setOpen(false);
+    setModelsOpen(false);
+  });
+
   const selected =
     levels.find((level) => level.id === intelligence) || levels[0];
+
+  const selectedModelIndex = Math.max(
+    models.findIndex((model) => model.id === selectedModel),
+    0
+  );
+
+  const selectedModelRecord = models.find(
+    (model) => model.id === selectedModel
+  );
+
+  const publicModelLabel = loading
+    ? "Loading..."
+    : getPublicModelLabel(
+        selectedModelRecord,
+        selectedModelIndex
+      );
 
   return (
     <div className="intelligence-selector" ref={ref}>
@@ -139,7 +170,10 @@ function IntelligenceSelector({
         aria-haspopup="menu"
         className="intelligence-trigger"
         disabled={disabled || !selected}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          setOpen((current) => !current);
+          setModelsOpen(false);
+        }}
         type="button"
       >
         <span>{selected?.label || "High"}</span>
@@ -147,25 +181,88 @@ function IntelligenceSelector({
       </button>
 
       {open && (
-        <div className="intelligence-menu" role="menu">
-          <div className="selector-heading">Intelligence</div>
-          {levels.map((level) => (
-            <button
-              className={level.id === intelligence ? "active" : ""}
-              key={level.id}
-              onClick={() => {
-                onSelect(level.id);
-                setOpen(false);
-              }}
-              role="menuitem"
-              type="button"
-            >
-              <span>{level.label}</span>
-              {level.id === intelligence && (
-                <span className="selection-check">✓</span>
-              )}
-            </button>
-          ))}
+        <div
+          className={`intelligence-menu ${
+            modelsOpen ? "has-submenu" : ""
+          }`}
+          role="menu"
+        >
+          <div className="selector-heading">
+            Intelligence
+          </div>
+
+          <div className="intelligence-options">
+            {levels.map((level) => (
+              <button
+                className={
+                  level.id === intelligence ? "active" : ""
+                }
+                key={level.id}
+                onClick={() => {
+                  onSelect(level.id);
+                  setOpen(false);
+                  setModelsOpen(false);
+                }}
+                role="menuitem"
+                type="button"
+              >
+                <span>{level.label}</span>
+
+                {level.id === intelligence && (
+                  <span className="selection-check">✓</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="selector-divider" />
+
+          <button
+            aria-expanded={modelsOpen}
+            aria-haspopup="menu"
+            className="model-submenu-trigger"
+            disabled={loading || !models.length}
+            onClick={() =>
+              setModelsOpen((current) => !current)
+            }
+            type="button"
+          >
+            <span>{publicModelLabel}</span>
+            <Icon name="chevronRight" size={13} />
+          </button>
+
+          {modelsOpen && (
+            <div className="model-submenu" role="menu">
+              {models.map((model, index) => {
+                const active = model.id === selectedModel;
+
+                return (
+                  <button
+                    className={active ? "active" : ""}
+                    disabled={!available}
+                    key={model.id}
+                    onClick={() => {
+                      onModelSelect(model.id);
+                      setModelsOpen(false);
+                      setOpen(false);
+                    }}
+                    role="menuitem"
+                    type="button"
+                  >
+                    <span>
+                      {getPublicModelLabel(model, index)}
+                    </span>
+
+                    {active && (
+                      <span className="selection-check">
+                        ✓
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
