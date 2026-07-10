@@ -52,7 +52,11 @@ function Topbar({ activeView, backendStatus, onRefreshBackend, onViewChange, onT
       </div>
 
       <div className="top-actions">
-        <button className="pro-button" type="button">
+        <button
+  className="pro-button"
+  onClick={() => window.alert("Coming soon")}
+  type="button"
+>
           <Icon name="crown" size={16} />
           <span>Upgrade to Pro</span>
         </button>
