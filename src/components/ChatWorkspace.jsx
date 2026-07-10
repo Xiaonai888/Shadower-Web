@@ -186,9 +186,8 @@ function Composer({
       />
 
       <div className="composer-toolbar">
-        
-
-        <IntelligenceSelector
+  <div className="send-area">
+    <IntelligenceSelector
   available={myAIAvailable}
   disabled={isSending}
   intelligence={intelligence}
