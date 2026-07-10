@@ -1,6 +1,7 @@
 import App from "./App";
 import "./styles.css";
 import "./modelSelector.css";
+import "./profileMenu.css";
 import "./composerUpdate.css";
 import "./styles.css";
 import "./modelSelector.css";
