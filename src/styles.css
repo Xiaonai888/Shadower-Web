@@ -319,15 +319,39 @@ svg {
 
 .recent-item {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 27px 27px;
   align-items: center;
-  gap: 7px;
-  min-height: 35px;
+  gap: 2px;
+  min-height: 38px;
+  padding: 2px;
+  border-radius: 9px;
   color: var(--text-soft);
   font-size: 9.5px;
 }
 
-.recent-item > span {
+.recent-item:hover,
+.recent-item.active {
+  background: var(--soft-bg);
+}
+
+.recent-item.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.recent-open-button {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 5px;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.recent-open-button > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -336,6 +360,33 @@ svg {
 .recent-item time {
   color: var(--muted);
   font-size: 8px;
+}
+
+.recent-action-button {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 17px;
+}
+
+.recent-action-button:hover {
+  color: var(--text);
+  background: var(--panel-solid);
+}
+
+.recent-action-button.danger:hover {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.recent-empty {
+  padding: 12px 5px;
+  color: var(--muted);
+  font-size: 9px;
 }
 
 .view-all-button {
