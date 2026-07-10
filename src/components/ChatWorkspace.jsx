@@ -1,8 +1,6 @@
+import { useEffect } from "react";
 import Icon from "./Icon";
-import {
-  IntelligenceSelector,
-  ModelSelector
-} from "./ModelSelector";
+import { IntelligenceSelector } from "./ModelSelector";
 import { greetingSuggestions } from "../data/uiData";
 
 function WelcomeState({ isSending, onSendSuggestion }) {
@@ -91,11 +89,7 @@ function MessageList({
             <div className="message-meta">
               <strong>{message.role === "assistant" ? "Shadower" : "You"}</strong>
               <time>{message.time}</time>
-              {message.role === "assistant" && message.model && (
-                <span className="ai-model-badge">
-                  My AI · {message.model}
-                </span>
-              )}
+              
             </div>
             <div className="message-bubble">
               <p>{message.text}</p>
@@ -119,7 +113,7 @@ function MessageList({
           <div className="message-stack">
             <div className="message-meta">
               <strong>Shadower</strong>
-              <span>My AI is thinking</span>
+              <span>Shadow is thinking</span>
             </div>
             <div className="message-bubble typing-bubble">
               <span />
@@ -156,7 +150,6 @@ function Composer({
   models,
   modelsLoading,
   myAIAvailable,
-  myAIStatus,
   onChange,
   onIntelligenceChange,
   onKeyDown,
@@ -165,6 +158,20 @@ function Composer({
   selectedAvailable,
   selectedModel
 }) {
+  useEffect(() => {
+    const textarea = inputRef.current;
+
+    if (!textarea) return;
+
+    textarea.style.height = "0px";
+
+    const nextHeight = Math.min(textarea.scrollHeight, 180);
+
+    textarea.style.height = `${Math.max(nextHeight, 24)}px`;
+    textarea.style.overflowY =
+      textarea.scrollHeight > 180 ? "auto" : "hidden";
+  }, [input, inputRef]);
+
   return (
     <form className="message-composer" onSubmit={onSubmit}>
       <textarea
@@ -174,29 +181,24 @@ function Composer({
         onKeyDown={onKeyDown}
         placeholder="Message Shadower..."
         ref={inputRef}
-        rows="3"
+        rows="1"
         value={input}
       />
 
       <div className="composer-toolbar">
         
 
-        <div className="send-area">
-          <ModelSelector
-            available={myAIAvailable}
-            disabled={isSending}
-            loading={modelsLoading}
-            models={models}
-            onSelect={onModelSelect}
-            selectedModel={selectedModel}
-            status={myAIStatus}
-          />
-          <IntelligenceSelector
-            disabled={isSending}
-            intelligence={intelligence}
-            levels={intelligenceLevels}
-            onSelect={onIntelligenceChange}
-          />
+        <IntelligenceSelector
+  available={myAIAvailable}
+  disabled={isSending}
+  intelligence={intelligence}
+  levels={intelligenceLevels}
+  loading={modelsLoading}
+  models={models}
+  onModelSelect={onModelSelect}
+  onSelect={onIntelligenceChange}
+  selectedModel={selectedModel}
+/>
           <button
             aria-label="Send message"
             className="send-button"
@@ -228,7 +230,6 @@ function ChatWorkspace({
   models,
   modelsLoading,
   myAIAvailable,
-  myAIStatus,
   onChange,
   onIntelligenceChange,
   onKeyDown,
@@ -267,7 +268,6 @@ function ChatWorkspace({
         models={models}
         modelsLoading={modelsLoading}
         myAIAvailable={myAIAvailable}
-        myAIStatus={myAIStatus}
         onChange={onChange}
         onIntelligenceChange={onIntelligenceChange}
         onKeyDown={onKeyDown}
