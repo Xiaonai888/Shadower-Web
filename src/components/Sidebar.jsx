@@ -32,6 +32,7 @@ function Sidebar({
         <div className="brand-logo">
           <Icon name="feather" size={28} />
         </div>
+
         <div className="brand-copy">
           <strong>Shadower</strong>
           <span>Private AI Writing Studio</span>
@@ -47,7 +48,9 @@ function Sidebar({
       <nav className="side-navigation" aria-label="Primary navigation">
         {sideNavigation.map((item) => (
           <button
-            className={`side-nav-item ${activeView === item.id ? "active" : ""}`}
+            className={`side-nav-item ${
+              activeView === item.id ? "active" : ""
+            }`}
             key={item.id}
             onClick={() => onViewChange(item.id)}
             type="button"
@@ -63,72 +66,54 @@ function Sidebar({
         <div className="section-heading">
           <span>Recent Chats</span>
         </div>
+
         <div className="recent-list">
-  {chatsLoading ? (
-    <div className="recent-empty">Loading chats...</div>
-  ) : chats.length ? (
-    chats.map((chat) => (
-      <article
-        className={`recent-item ${
-          currentChatId === chat.id ? "active" : ""
-        }`}
-        key={chat.id}
-      >
-        <button
-          className="recent-open-button"
-          onClick={() => onOpenChat(chat)}
-          type="button"
-        >
-          <Icon name="chat" size={14} />
-          <span title={chat.title}>{chat.title}</span>
-          <time>{formatChatTime(chat.updated_at)}</time>
-        </button>
+          {chatsLoading ? (
+            <div className="recent-empty">Loading chats...</div>
+          ) : chats.length ? (
+            chats.map((chat) => (
+              <article
+                className={`recent-item ${
+                  currentChatId === chat.id ? "active" : ""
+                }`}
+                key={chat.id}
+              >
+                <button
+                  className="recent-open-button"
+                  onClick={() => onOpenChat(chat)}
+                  type="button"
+                >
+                  <Icon name="chat" size={14} />
+                  <span title={chat.title}>{chat.title}</span>
+                  <time>{formatChatTime(chat.updated_at)}</time>
+                </button>
 
-        <button
-          aria-label={`Rename ${chat.title}`}
-          className="recent-action-button"
-          onClick={() => onRenameChat(chat)}
-          title="Rename"
-          type="button"
-        >
-          <Icon name="pen" size={13} />
-        </button>
+                <button
+                  aria-label={`Rename ${chat.title}`}
+                  className="recent-action-button"
+                  onClick={() => onRenameChat(chat)}
+                  title="Rename"
+                  type="button"
+                >
+                  <Icon name="pen" size={13} />
+                </button>
 
-        <button
-          aria-label={`Delete ${chat.title}`}
-          className="recent-action-button danger"
-          onClick={() => onDeleteChat(chat)}
-          title="Delete"
-          type="button"
-        >
-          ×
-        </button>
-      </article>
-    ))
-  ) : (
-    <div className="recent-empty">No chats yet</div>
-  )}
-</div>
+                <button
+                  aria-label={`Delete ${chat.title}`}
+                  className="recent-action-button danger"
+                  onClick={() => onDeleteChat(chat)}
+                  title="Delete"
+                  type="button"
+                >
+                  ×
+                </button>
+              </article>
+            ))
+          ) : (
+            <div className="recent-empty">No chats yet</div>
+          )}
+        </div>
       </section>
-
-      <div className="storage-card">
-        <div className="storage-heading">
-          <strong>Storage</strong>
-          <span>24% used</span>
-        </div>
-        <div className="storage-track">
-          <span />
-        </div>
-        <div className="storage-footer">
-          <span>2.4 GB / 10 GB</span>
-          <button type="button">Manage</button>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-export default Sidebar;
 
       <div className="storage-card">
         <div className="storage-heading">
@@ -148,3 +133,7 @@ export default Sidebar;
 
       <ProfileMenu />
     </aside>
+  );
+}
+
+export default Sidebar;
