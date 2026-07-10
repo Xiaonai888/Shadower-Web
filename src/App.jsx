@@ -7,11 +7,17 @@ import Topbar from "./components/Topbar";
 import { topTabs } from "./data/uiData";
 import {
   checkBackendHealth,
+  createChatSession,
+  deleteChatSession,
+  getChatMessages,
   getChatModels,
-  sendChatMessage
+  getChatSessions,
+  sendChatMessage,
+  updateChatSession
 } from "./services/chatApi";
 
 const CHAT_STORAGE_KEY = "shadower-current-chat";
+const CURRENT_CHAT_ID_KEY = "shadower-current-chat-id";
 const MY_AI_SELECTION_KEY = "shadower-my-ai-selection";
 const LEGACY_SELECTION_KEY = "shadower-ai-selection";
 const MAX_STORED_MESSAGES = 50;
@@ -50,6 +56,14 @@ function getStoredSelection() {
       model: "",
       intelligence: "high"
     };
+  }
+}
+
+function getStoredChatId() {
+  try {
+    return localStorage.getItem(CURRENT_CHAT_ID_KEY) || "";
+  } catch {
+    return "";
   }
 }
 
@@ -92,12 +106,19 @@ function getStoredMessages() {
   }
 }
 
-function formatTime() {
+function formatTime(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
   return new Intl.DateTimeFormat([], {
     hour: "numeric",
     minute: "2-digit"
-  }).format(new Date());
+  }).format(date);
 }
+
 
 function createMessage(role, text, metadata = {}) {
   const uniqueId =
@@ -111,6 +132,29 @@ function createMessage(role, text, metadata = {}) {
     time: formatTime(),
     ...metadata
   };
+}
+
+function normalizeDatabaseMessages(records) {
+  if (!Array.isArray(records)) {
+    return [];
+  }
+
+  return records
+    .filter(
+      (item) =>
+        item &&
+        (item.role === "user" || item.role === "assistant") &&
+        typeof item.content === "string" &&
+        item.content.trim()
+    )
+    .map((item) => ({
+      id: item.id,
+      role: item.role,
+      text: item.content,
+      time: formatTime(item.created_at),
+      model: item.model || "",
+      intelligence: item.intelligence || ""
+    }));
 }
 
 function toApiHistory(messages) {
@@ -158,6 +202,9 @@ function App() {
   const storedSelection = getStoredSelection();
   const [activeView, setActiveView] = useState("chat");
   const [backendStatus, setBackendStatus] = useState("checking");
+  const [chatSessions, setChatSessions] = useState([]);
+  const [chatsLoading, setChatsLoading] = useState(true);
+  const [currentChatId, setCurrentChatId] = useState(getStoredChatId);
   const [error, setError] = useState("");
   const [input, setInput] = useState("");
   const [intelligence, setIntelligence] = useState(
@@ -215,10 +262,78 @@ function App() {
     }
   };
 
+  const refreshChatSessions = async () => {
+  setChatsLoading(true);
+
+  try {
+    const data = await getChatSessions();
+    const chats = Array.isArray(data.chats) ? data.chats : [];
+
+    setChatSessions(chats);
+    return chats;
+  } catch (requestError) {
+    setError(requestError.message || "Unable to load chat sessions");
+    return [];
+  } finally {
+    setChatsLoading(false);
+  }
+};
+
+const openChat = async (chat) => {
+  if (!chat?.id || isSending) return;
+
+  setActiveView("chat");
+  setCurrentChatId(chat.id);
+  setMessages([]);
+  setInput("");
+  setError("");
+
+  if (chat.model) {
+    setSelectedModel(chat.model);
+  }
+
+  if (chat.intelligence) {
+    setIntelligence(chat.intelligence);
+  }
+
+  try {
+    const data = await getChatMessages(chat.id);
+
+    setMessages(normalizeDatabaseMessages(data.messages));
+    setBackendStatus("online");
+  } catch (requestError) {
+    setError(requestError.message || "Unable to open this chat");
+  }
+};
+
   useEffect(() => {
-    refreshBackendStatus();
-    refreshModels();
-  }, []);
+  refreshBackendStatus();
+  refreshModels();
+
+  refreshChatSessions().then((chats) => {
+    const storedChatId = getStoredChatId();
+    const storedChat = chats.find((chat) => chat.id === storedChatId);
+
+    if (storedChat) {
+      openChat(storedChat);
+    } else {
+      setCurrentChatId("");
+      setMessages([]);
+    }
+  });
+}, []);
+
+  useEffect(() => {
+  try {
+    if (currentChatId) {
+      localStorage.setItem(CURRENT_CHAT_ID_KEY, currentChatId);
+    } else {
+      localStorage.removeItem(CURRENT_CHAT_ID_KEY);
+    }
+  } catch {
+    return;
+  }
+}, [currentChatId]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -269,14 +384,30 @@ function App() {
       myAI.models.some((model) => model.id === selectedModel)
   );
 
-  const startNewChat = () => {
-    setActiveView("chat");
-    setMessages([]);
-    setInput("");
-    setError("");
-    window.setTimeout(() => inputRef.current?.focus(), 0);
-  };
+const startNewChat = async () => {
+  setActiveView("chat");
+  setMessages([]);
+  setInput("");
+  setError("");
 
+  try {
+    const data = await createChatSession({
+      model: selectedModel || undefined,
+      intelligence
+    });
+
+    setCurrentChatId(data.chat.id);
+    setChatSessions((current) => [
+      data.chat,
+      ...current.filter((chat) => chat.id !== data.chat.id)
+    ]);
+
+    setBackendStatus("online");
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  } catch (requestError) {
+    setError(requestError.message || "Unable to create a new chat");
+  }
+};
   const changeView = (viewId) => {
     setActiveView(viewId);
   };
@@ -315,19 +446,39 @@ function App() {
     setError("");
     setIsSending(true);
 
-    if (appendUser) {
-      setMessages((current) => [
-        ...current,
-        createMessage("user", text, selection)
-      ]);
-    }
-
     try {
-      const data = await sendChatMessage(
-        text,
-        toApiHistory(history),
-        selection
-      );
+  let targetChatId = currentChatId;
+
+  if (!targetChatId) {
+    const created = await createChatSession({
+      model: selection.model,
+      intelligence: selection.intelligence
+    });
+
+    targetChatId = created.chat.id;
+    setCurrentChatId(targetChatId);
+
+    setChatSessions((current) => [
+      created.chat,
+      ...current.filter((chat) => chat.id !== created.chat.id)
+    ]);
+  }
+
+  if (appendUser) {
+    setMessages((current) => [
+      ...current,
+      createMessage("user", text, selection)
+    ]);
+  }
+
+  const data = await sendChatMessage(
+    text,
+    toApiHistory(history),
+    {
+      ...selection,
+      chatId: appendUser ? targetChatId : null
+    }
+  );
 
       setMessages((current) => [
         ...current,
@@ -341,6 +492,7 @@ function App() {
         )
       ]);
 
+      await refreshChatSessions();
       setBackendStatus("online");
     } catch (requestError) {
       setError(
@@ -351,6 +503,43 @@ function App() {
       setIsSending(false);
     }
   };
+
+  const renameChat = async (chat) => {
+  const title = window.prompt("Rename chat", chat.title)?.trim();
+
+  if (!title || title === chat.title) return;
+
+  try {
+    const data = await updateChatSession(chat.id, { title });
+
+    setChatSessions((current) =>
+      current.map((item) => (item.id === chat.id ? data.chat : item))
+    );
+  } catch (requestError) {
+    setError(requestError.message || "Unable to rename this chat");
+  }
+};
+
+const removeChat = async (chat) => {
+  const confirmed = window.confirm(`Delete "${chat.title}"?`);
+
+  if (!confirmed) return;
+
+  try {
+    await deleteChatSession(chat.id);
+
+    setChatSessions((current) =>
+      current.filter((item) => item.id !== chat.id)
+    );
+
+    if (currentChatId === chat.id) {
+      setCurrentChatId("");
+      setMessages([]);
+    }
+  } catch (requestError) {
+    setError(requestError.message || "Unable to delete this chat");
+  }
+};
 
   const retryLastMessage = () => {
     let lastUserIndex = -1;
@@ -406,10 +595,16 @@ function App() {
   return (
     <div className="app-shell">
       <Sidebar
-        activeView={activeView}
-        onNewChat={startNewChat}
-        onViewChange={changeView}
-      />
+  activeView={activeView}
+  chats={chatSessions}
+  chatsLoading={chatsLoading}
+  currentChatId={currentChatId}
+  onDeleteChat={removeChat}
+  onNewChat={startNewChat}
+  onOpenChat={openChat}
+  onRenameChat={renameChat}
+  onViewChange={changeView}
+/>
 
       <section className="main-shell">
         <Topbar
