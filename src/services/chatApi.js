@@ -36,21 +36,57 @@ export function getChatModels() {
   return request("/api/chat/models");
 }
 
+export function getChatSessions(limit = 50) {
+  return request(`/api/chats?limit=${limit}`);
+}
+
+export function createChatSession(payload = {}) {
+  return request("/api/chats", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getChatMessages(chatId, limit = 200) {
+  return request(`/api/chats/${chatId}/messages?limit=${limit}`);
+}
+
+export function updateChatSession(chatId, changes) {
+  return request(`/api/chats/${chatId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(changes)
+  });
+}
+
+export function deleteChatSession(chatId) {
+  return request(`/api/chats/${chatId}`, {
+    method: "DELETE"
+  });
+}
+
 export function sendChatMessage(
   message,
   history = [],
-  { model, intelligence }
+  { model, intelligence, chatId = null }
 ) {
+  
   return request("/api/chat", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      message,
-      history,
-      model,
-      intelligence
-    })
+  chatId,
+  message,
+  history,
+  model,
+  intelligence
+})
   });
 }
