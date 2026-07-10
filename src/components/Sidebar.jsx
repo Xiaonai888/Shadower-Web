@@ -1,7 +1,31 @@
 import Icon from "./Icon";
-import { recentChats, sideNavigation } from "../data/uiData";
+import { sideNavigation } from "../data/uiData";
 
-function Sidebar({ activeView, onNewChat, onViewChange }) {
+
+function formatChatTime(value) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "";
+
+  return new Intl.DateTimeFormat([], {
+    month: "short",
+    day: "numeric"
+  }).format(date);
+}
+
+function Sidebar({
+  activeView,
+  chats = [],
+  chatsLoading = false,
+  currentChatId,
+  onDeleteChat,
+  onNewChat,
+  onOpenChat,
+  onRenameChat,
+  onViewChange
+}) {
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -40,18 +64,51 @@ function Sidebar({ activeView, onNewChat, onViewChange }) {
           <span>Recent Chats</span>
         </div>
         <div className="recent-list">
-          {recentChats.map((chat) => (
-            <div className="recent-item" key={chat.title}>
-              <Icon name="chat" size={14} />
-              <span title={chat.title}>{chat.title}</span>
-              <time>{chat.time}</time>
-            </div>
-          ))}
-        </div>
-        <button className="view-all-button" type="button">
-          <span>View all</span>
-          <Icon name="chevronRight" size={15} />
+  {chatsLoading ? (
+    <div className="recent-empty">Loading chats...</div>
+  ) : chats.length ? (
+    chats.map((chat) => (
+      <article
+        className={`recent-item ${
+          currentChatId === chat.id ? "active" : ""
+        }`}
+        key={chat.id}
+      >
+        <button
+          className="recent-open-button"
+          onClick={() => onOpenChat(chat)}
+          type="button"
+        >
+          <Icon name="chat" size={14} />
+          <span title={chat.title}>{chat.title}</span>
+          <time>{formatChatTime(chat.updated_at)}</time>
         </button>
+
+        <button
+          aria-label={`Rename ${chat.title}`}
+          className="recent-action-button"
+          onClick={() => onRenameChat(chat)}
+          title="Rename"
+          type="button"
+        >
+          <Icon name="pen" size={13} />
+        </button>
+
+        <button
+          aria-label={`Delete ${chat.title}`}
+          className="recent-action-button danger"
+          onClick={() => onDeleteChat(chat)}
+          title="Delete"
+          type="button"
+        >
+          ×
+        </button>
+      </article>
+    ))
+  ) : (
+    <div className="recent-empty">No chats yet</div>
+  )}
+</div>
       </section>
 
       <div className="storage-card">
