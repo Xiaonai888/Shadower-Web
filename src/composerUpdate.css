@@ -1,0 +1,147 @@
+/* Compact Shadower composer */
+
+.message-composer {
+  width: min(800px, calc(100% - 40px));
+  margin: 0 auto 18px;
+  padding: 10px 12px 9px;
+  border-radius: 25px;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    border-radius 150ms ease;
+}
+
+.message-composer textarea {
+  min-height: 24px;
+  max-height: 180px;
+  overflow-y: hidden;
+  resize: none;
+  padding: 3px 6px 2px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.composer-toolbar {
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.send-area {
+  gap: 6px;
+}
+
+.send-button {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+}
+
+/* Intelligence and Shadow model menus */
+
+.intelligence-trigger {
+  min-width: 72px;
+  padding: 0 8px;
+  border-color: transparent;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.intelligence-trigger:hover,
+.intelligence-trigger[aria-expanded="true"] {
+  border-color: transparent;
+  background: var(--accent-soft);
+}
+
+.intelligence-menu {
+  width: 152px;
+  overflow: visible;
+  padding: 8px;
+}
+
+.intelligence-menu.has-submenu {
+  right: 196px;
+}
+
+.intelligence-options {
+  display: grid;
+  gap: 4px;
+}
+
+.selector-divider {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--border);
+}
+
+.model-submenu-trigger {
+  margin-top: 1px;
+}
+
+.model-submenu {
+  position: absolute;
+  left: calc(100% + 8px);
+  bottom: 0;
+  z-index: 70;
+  display: grid;
+  width: 188px;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--panel-solid);
+  box-shadow: var(--shadow);
+}
+
+.model-submenu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: var(--text-soft);
+  background: transparent;
+  font-size: 8.5px;
+  text-align: left;
+}
+
+.model-submenu button:hover:not(:disabled),
+.model-submenu button.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+@media (max-width: 760px) {
+  .message-composer {
+    width: calc(100% - 20px);
+    margin-bottom: 12px;
+    border-radius: 22px;
+  }
+
+  .message-composer textarea {
+    min-height: 24px;
+  }
+
+  .intelligence-trigger {
+    min-width: 66px;
+    width: auto;
+    padding: 0 8px;
+  }
+
+  .intelligence-trigger span {
+    display: inline;
+  }
+
+  .intelligence-menu.has-submenu {
+    right: 0;
+  }
+
+  .model-submenu {
+    right: calc(100% + 8px);
+    left: auto;
+  }
+}
