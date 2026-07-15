@@ -220,6 +220,7 @@ function App() {
   const [modelsLoading, setModelsLoading] = useState(true);
   const [myAI, setMyAI] = useState(EMPTY_MY_AI);
   const [selectedModel, setSelectedModel] = useState(storedSelection.model);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [theme, setTheme] = useState(getStoredTheme);
   const inputRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -599,17 +600,20 @@ const removeChat = async (chat) => {
   chats={chatSessions}
   chatsLoading={chatsLoading}
   currentChatId={currentChatId}
+  onClose={() => setSidebarOpen(false)}
   onDeleteChat={removeChat}
   onNewChat={startNewChat}
   onOpenChat={openChat}
   onRenameChat={renameChat}
   onViewChange={changeView}
+  open={sidebarOpen}
 />
 
       <section className="main-shell">
         <Topbar
-          activeView={activeView}
-          backendStatus={backendStatus}
+  activeView={activeView}
+  backendStatus={backendStatus}
+  onOpenSidebar={() => setSidebarOpen(true)}
           onRefreshBackend={() => {
             refreshBackendStatus();
             refreshModels();
