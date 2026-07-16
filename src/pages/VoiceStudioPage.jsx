@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Icon from "../components/Icon";
+import {
+  createVoiceCharacter,
+  deleteVoiceCharacter,
+  getVoiceCharacters,
+  updateVoiceCharacter
+} from "../services/voiceApi";
 import "./VoiceStudioPage.css";
 
-const STORAGE_KEY = "shadower_voice_characters_v1";
+const LEGACY_STORAGE_KEY = "shadower_voice_characters_v1";
+const MIGRATION_KEY = "shadower_voice_characters_api_migrated_v1";
 
 const LANGUAGES = [
   "English",
@@ -30,20 +37,75 @@ const EMPTY_FORM = {
   voiceRole: "Narrator",
   linkedStory: "",
   description: "",
-  avatar: "",
   permissionConfirmed: false
 };
 
-function loadCharacters() {
+function readLegacyCharacters() {
   try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    const value = JSON.parse(
+      window.localStorage.getItem(LEGACY_STORAGE_KEY) || "[]"
+    );
     return Array.isArray(value) ? value : [];
   } catch {
     return [];
   }
 }
 
-function getInitials(name) {
+function characterMatches(left, right) {
+  return (
+    left.name?.trim().toLowerCase() === right.name?.trim().toLowerCase() &&
+    left.language?.trim().toLowerCase() ===
+      right.language?.trim().toLowerCase() &&
+    (left.displayName || "").trim().toLowerCase() ===
+      (right.displayName || "").trim().toLowerCase()
+  );
+}
+
+async function migrateLegacyCharacters(serverCharacters) {
+  try {
+    if (window.localStorage.getItem(MIGRATION_KEY) === "done") {
+      return { characters: serverCharacters, migratedCount: 0 };
+    }
+  } catch {
+    return { characters: serverCharacters, migratedCount: 0 };
+  }
+
+  const legacyCharacters = readLegacyCharacters();
+  const characters = [...serverCharacters];
+  let migratedCount = 0;
+
+  for (const legacy of legacyCharacters) {
+    if (!legacy?.name?.trim()) continue;
+    if (characters.some((item) => characterMatches(item, legacy))) continue;
+
+    const data = await createVoiceCharacter({
+      name: legacy.name.trim(),
+      displayName: legacy.displayName?.trim() || null,
+      language: legacy.language?.trim() || "English",
+      voiceRole: legacy.voiceRole?.trim() || "Narrator",
+      linkedStory: legacy.linkedStory?.trim() || null,
+      description: legacy.description?.trim() || null,
+      avatarUrl: null,
+      permissionConfirmed: true
+    });
+
+    if (data.character) {
+      characters.unshift(data.character);
+      migratedCount += 1;
+    }
+  }
+
+  try {
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    window.localStorage.setItem(MIGRATION_KEY, "done");
+  } catch {
+    return { characters, migratedCount };
+  }
+
+  return { characters, migratedCount };
+}
+
+function getInitials(name = "") {
   return (
     name
       .trim()
@@ -52,6 +114,24 @@ function getInitials(name) {
       .map((part) => part[0]?.toUpperCase())
       .join("") || "VC"
   );
+}
+
+function formatDuration(seconds = 0) {
+  const minutes = Math.max(Number(seconds) || 0, 0) / 60;
+  if (!minutes) return "0 min";
+  return `${minutes < 10 ? minutes.toFixed(1) : Math.round(minutes)} min`;
+}
+
+function getStatusLabel(status) {
+  const labels = {
+    "no-samples": "No samples",
+    "ready-to-clone": "Ready to clone",
+    processing: "Processing",
+    ready: "Voice ready",
+    failed: "Failed"
+  };
+
+  return labels[status] || "No samples";
 }
 
 function StatCard({ icon, label, value, tone }) {
@@ -91,15 +171,15 @@ function EmptyState({ onCreate }) {
   );
 }
 
-function CharacterCard({ character }) {
+function CharacterCard({ character, deleting, onDelete, onEdit }) {
   return (
     <article className="voice-character-card">
       <div className="voice-character-head">
-        {character.avatar ? (
+        {character.avatarUrl ? (
           <img
             alt=""
             className="voice-character-avatar"
-            src={character.avatar}
+            src={character.avatarUrl}
           />
         ) : (
           <div className="voice-character-avatar voice-avatar-fallback">
@@ -112,9 +192,9 @@ function CharacterCard({ character }) {
           <span>{character.displayName || character.voiceRole}</span>
         </div>
 
-        <div className="voice-status-badge">
+        <div className={`voice-status-badge ${character.status || "no-samples"}`}>
           <i />
-          No samples
+          {getStatusLabel(character.status)}
         </div>
       </div>
 
@@ -129,14 +209,31 @@ function CharacterCard({ character }) {
         </div>
         <div>
           <span>Samples</span>
-          <strong>0 files · 0 min</strong>
+          <strong>
+            {character.sampleCount || 0} files · {formatDuration(character.sampleDurationSeconds)}
+          </strong>
         </div>
+      </div>
+
+      <div className="voice-character-actions">
+        <button className="voice-card-action" onClick={onEdit} type="button">
+          <Icon name="pen" size={15} />
+          Edit
+        </button>
+        <button
+          className="voice-card-action danger"
+          disabled={deleting}
+          onClick={onDelete}
+          type="button"
+        >
+          {deleting ? "Deleting..." : "Delete"}
+        </button>
       </div>
 
       <button
         className="voice-manage-button"
         disabled
-        title="Voice samples will be available in Stage 2"
+        title="Voice upload will be available in Stage 4"
         type="button"
       >
         <span>
@@ -161,11 +258,38 @@ function Field({ children, error, label, required }) {
   );
 }
 
-function CreateCharacterModal({ open, onClose, onCreate }) {
+function getCharacterForm(character) {
+  if (!character) return EMPTY_FORM;
+
+  return {
+    name: character.name || "",
+    displayName: character.displayName || "",
+    language: character.language || "English",
+    voiceRole: character.voiceRole || "Narrator",
+    linkedStory: character.linkedStory || "",
+    description: character.description || "",
+    permissionConfirmed: true
+  };
+}
+
+function CharacterModal({
+  character,
+  open,
+  onClose,
+  onSubmit,
+  saving,
+  submitError
+}) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
-  const fileInputRef = useRef(null);
   const nameInputRef = useRef(null);
+  const editing = Boolean(character);
+
+  useEffect(() => {
+    if (!open) return;
+    setForm(getCharacterForm(character));
+    setErrors({});
+  }, [character, open]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -187,43 +311,11 @@ function CreateCharacterModal({ open, onClose, onCreate }) {
     };
   }, [onClose, open]);
 
-  useEffect(() => {
-    if (!open) {
-      setForm(EMPTY_FORM);
-      setErrors({});
-    }
-  }, [open]);
-
   if (!open) return null;
 
   const updateField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: "" }));
-  };
-
-  const handleAvatar = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      setErrors((current) => ({
-        ...current,
-        avatar: "Please choose a PNG, JPG or WEBP image."
-      }));
-      return;
-    }
-
-    if (file.size > 2 * 1024 * 1024) {
-      setErrors((current) => ({
-        ...current,
-        avatar: "Avatar must be smaller than 2 MB."
-      }));
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => updateField("avatar", String(reader.result || ""));
-    reader.readAsDataURL(file);
   };
 
   const submit = (event) => {
@@ -234,7 +326,7 @@ function CreateCharacterModal({ open, onClose, onCreate }) {
       nextErrors.name = "Character name is required.";
     }
 
-    if (!form.permissionConfirmed) {
+    if (!editing && !form.permissionConfirmed) {
       nextErrors.permissionConfirmed =
         "Please confirm that you own the voice or have permission.";
     }
@@ -244,25 +336,28 @@ function CreateCharacterModal({ open, onClose, onCreate }) {
       return;
     }
 
-    onCreate({
-      ...form,
+    onSubmit({
       name: form.name.trim(),
-      displayName: form.displayName.trim(),
-      linkedStory: form.linkedStory.trim(),
-      description: form.description.trim()
+      displayName: form.displayName.trim() || null,
+      language: form.language,
+      voiceRole: form.voiceRole,
+      linkedStory: form.linkedStory.trim() || null,
+      description: form.description.trim() || null,
+      ...(editing ? {} : { permissionConfirmed: true })
     });
   };
 
   return (
     <div
-      aria-labelledby="voice-create-title"
+      aria-labelledby="voice-character-modal-title"
       aria-modal="true"
       className="voice-modal-layer"
       role="dialog"
     >
       <button
-        aria-label="Close create character dialog"
+        aria-label="Close character dialog"
         className="voice-modal-backdrop"
+        disabled={saving}
         onClick={onClose}
         type="button"
       />
@@ -271,14 +366,21 @@ function CreateCharacterModal({ open, onClose, onCreate }) {
         <header className="voice-modal-header">
           <div>
             <span className="voice-modal-icon">
-              <Icon name="voice" size={21} />
+              <Icon name={editing ? "pen" : "voice"} size={21} />
             </span>
-            <h2 id="voice-create-title">Create Voice Character</h2>
-            <p>Create the profile now. Voice samples will be added next.</p>
+            <h2 id="voice-character-modal-title">
+              {editing ? "Edit Voice Character" : "Create Voice Character"}
+            </h2>
+            <p>
+              {editing
+                ? "Update this character profile."
+                : "Create the profile now. Voice samples will be added next."}
+            </p>
           </div>
           <button
             aria-label="Close"
             className="voice-modal-close"
+            disabled={saving}
             onClick={onClose}
             type="button"
           >
@@ -289,50 +391,19 @@ function CreateCharacterModal({ open, onClose, onCreate }) {
         <form onSubmit={submit}>
           <div className="voice-modal-body">
             <div className="voice-avatar-row">
-              <button
-                className="voice-avatar-upload"
-                onClick={() => fileInputRef.current?.click()}
-                type="button"
-              >
-                {form.avatar ? (
-                  <img alt="Character avatar preview" src={form.avatar} />
+              <div className="voice-avatar-upload">
+                {character?.avatarUrl ? (
+                  <img alt="Character avatar" src={character.avatarUrl} />
                 ) : (
                   <>
                     <Icon name="user" size={26} />
-                    <span>Add avatar</span>
+                    <span>Avatar</span>
                   </>
                 )}
-              </button>
-              <input
-                accept="image/*"
-                className="voice-hidden-input"
-                onChange={handleAvatar}
-                ref={fileInputRef}
-                type="file"
-              />
+              </div>
               <div>
                 <strong>Character avatar</strong>
-                <p>PNG, JPG or WEBP. Maximum 2 MB.</p>
-                <div className="voice-avatar-actions">
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    type="button"
-                  >
-                    Upload image
-                  </button>
-                  {form.avatar ? (
-                    <button
-                      className="danger"
-                      onClick={() => updateField("avatar", "")}
-                      type="button"
-                    >
-                      Remove
-                    </button>
-                  ) : null}
-                </div>
-                {errors.avatar ? (
-                  <small className="voice-field-error">{errors.avatar}</small>
-                ) : null}
+                <p>Avatar upload will be connected with cloud storage later.</p>
               </div>
             </div>
 
@@ -340,6 +411,7 @@ function CreateCharacterModal({ open, onClose, onCreate }) {
               <Field error={errors.name} label="Character name" required>
                 <input
                   className={errors.name ? "invalid" : ""}
+                  maxLength={120}
                   onChange={(event) => updateField("name", event.target.value)}
                   placeholder="e.g. Gu Wanyin"
                   ref={nameInputRef}
@@ -349,6 +421,7 @@ function CreateCharacterModal({ open, onClose, onCreate }) {
 
               <Field label="Display name">
                 <input
+                  maxLength={120}
                   onChange={(event) =>
                     updateField("displayName", event.target.value)
                   }
@@ -370,7 +443,7 @@ function CreateCharacterModal({ open, onClose, onCreate }) {
                 </select>
               </Field>
 
-              <Field label="Voice role">
+              <Field label="Voice role" required>
                 <select
                   onChange={(event) =>
                     updateField("voiceRole", event.target.value)
@@ -386,6 +459,7 @@ function CreateCharacterModal({ open, onClose, onCreate }) {
 
             <Field label="Linked story">
               <input
+                maxLength={160}
                 onChange={(event) =>
                   updateField("linkedStory", event.target.value)
                 }
@@ -396,7 +470,7 @@ function CreateCharacterModal({ open, onClose, onCreate }) {
 
             <Field label="Voice description">
               <textarea
-                maxLength={240}
+                maxLength={500}
                 onChange={(event) =>
                   updateField("description", event.target.value)
                 }
@@ -405,42 +479,63 @@ function CreateCharacterModal({ open, onClose, onCreate }) {
                 value={form.description}
               />
               <span className="voice-character-count">
-                {form.description.length}/240
+                {form.description.length}/500
               </span>
             </Field>
 
-            <label
-              className={`voice-permission-box ${
-                errors.permissionConfirmed ? "invalid" : ""
-              }`}
-            >
-              <input
-                checked={form.permissionConfirmed}
-                onChange={(event) =>
-                  updateField("permissionConfirmed", event.target.checked)
-                }
-                type="checkbox"
-              />
-              <span>
-                <strong>Voice ownership and permission</strong>
-                <small>
-                  I confirm that I own this voice or have clear permission from
-                  its owner to create and use a clone.
-                </small>
-                {errors.permissionConfirmed ? (
-                  <em>{errors.permissionConfirmed}</em>
-                ) : null}
-              </span>
-            </label>
+            {!editing ? (
+              <label
+                className={`voice-permission-box ${
+                  errors.permissionConfirmed ? "invalid" : ""
+                }`}
+              >
+                <input
+                  checked={form.permissionConfirmed}
+                  onChange={(event) =>
+                    updateField("permissionConfirmed", event.target.checked)
+                  }
+                  type="checkbox"
+                />
+                <span>
+                  <strong>Voice ownership and permission</strong>
+                  <small>
+                    I confirm that I own this voice or have clear permission
+                    from its owner to create and use a clone.
+                  </small>
+                  {errors.permissionConfirmed ? (
+                    <em>{errors.permissionConfirmed}</em>
+                  ) : null}
+                </span>
+              </label>
+            ) : null}
+
+            {submitError ? (
+              <div className="voice-form-server-error" role="alert">
+                {submitError}
+              </div>
+            ) : null}
           </div>
 
           <footer className="voice-modal-footer">
-            <button className="voice-secondary-button" onClick={onClose} type="button">
+            <button
+              className="voice-secondary-button"
+              disabled={saving}
+              onClick={onClose}
+              type="button"
+            >
               Cancel
             </button>
-            <button className="voice-primary-button" type="submit">
-              <Icon name="plus" size={17} />
-              Create Character
+            <button
+              className="voice-primary-button"
+              disabled={saving}
+              type="submit"
+            >
+              <Icon name={editing ? "pen" : "plus"} size={17} />
+              {saving
+                ? "Saving..."
+                : editing
+                  ? "Save Changes"
+                  : "Create Character"}
             </button>
           </footer>
         </form>
@@ -450,23 +545,56 @@ function CreateCharacterModal({ open, onClose, onCreate }) {
 }
 
 function VoiceStudioPage() {
-  const [characters, setCharacters] = useState(loadCharacters);
+  const [characters, setCharacters] = useState([]);
   const [search, setSearch] = useState("");
   const [language, setLanguage] = useState("All languages");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingCharacter, setEditingCharacter] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [deletingId, setDeletingId] = useState("");
   const [notice, setNotice] = useState("");
+  const [noticeType, setNoticeType] = useState("success");
+
+  const showNotice = (message, type = "success") => {
+    setNotice(message);
+    setNoticeType(type);
+  };
+
+  const loadCharacters = async () => {
+    setLoading(true);
+    setLoadError("");
+
+    try {
+      const data = await getVoiceCharacters();
+      const serverCharacters = Array.isArray(data.characters)
+        ? data.characters
+        : [];
+      const migrated = await migrateLegacyCharacters(serverCharacters);
+
+      setCharacters(migrated.characters);
+
+      if (migrated.migratedCount) {
+        showNotice(
+          `${migrated.migratedCount} browser character saved to the database.`
+        );
+      }
+    } catch (error) {
+      setLoadError(error.message || "Unable to load voice characters.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(characters));
-    } catch {
-      setNotice("Unable to save this character in your browser.");
-    }
-  }, [characters]);
+    loadCharacters();
+  }, []);
 
   useEffect(() => {
     if (!notice) return undefined;
-    const timer = window.setTimeout(() => setNotice(""), 2600);
+    const timer = window.setTimeout(() => setNotice(""), 3200);
     return () => window.clearTimeout(timer);
   }, [notice]);
 
@@ -491,21 +619,78 @@ function VoiceStudioPage() {
     });
   }, [characters, language, search]);
 
-  const createCharacter = (form) => {
-    const character = {
-      id: `voice-character-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2, 7)}`,
-      ...form,
-      sampleCount: 0,
-      sampleDuration: 0,
-      status: "no-samples",
-      createdAt: new Date().toISOString()
-    };
+  const totalSamples = characters.reduce(
+    (sum, character) => sum + (Number(character.sampleCount) || 0),
+    0
+  );
 
-    setCharacters((current) => [character, ...current]);
+  const openCreate = () => {
+    setEditingCharacter(null);
+    setSubmitError("");
+    setModalOpen(true);
+  };
+
+  const openEdit = (character) => {
+    setEditingCharacter(character);
+    setSubmitError("");
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    if (saving) return;
     setModalOpen(false);
-    setNotice(`${character.name} was created successfully.`);
+    setEditingCharacter(null);
+    setSubmitError("");
+  };
+
+  const saveCharacter = async (form) => {
+    setSaving(true);
+    setSubmitError("");
+
+    try {
+      if (editingCharacter) {
+        const data = await updateVoiceCharacter(editingCharacter.id, form);
+        setCharacters((current) =>
+          current.map((item) =>
+            item.id === editingCharacter.id ? data.character : item
+          )
+        );
+        showNotice(`${data.character.name} was updated successfully.`);
+      } else {
+        const data = await createVoiceCharacter({ ...form, avatarUrl: null });
+        setCharacters((current) => [data.character, ...current]);
+        showNotice(`${data.character.name} was created successfully.`);
+      }
+
+      setModalOpen(false);
+      setEditingCharacter(null);
+    } catch (error) {
+      setSubmitError(error.message || "Unable to save this character.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeCharacter = async (character) => {
+    const confirmed = window.confirm(
+      `Delete “${character.name}”? This character will be removed from Voice Studio.`
+    );
+
+    if (!confirmed) return;
+
+    setDeletingId(character.id);
+
+    try {
+      await deleteVoiceCharacter(character.id);
+      setCharacters((current) =>
+        current.filter((item) => item.id !== character.id)
+      );
+      showNotice(`${character.name} was deleted successfully.`);
+    } catch (error) {
+      showNotice(error.message || "Unable to delete this character.", "error");
+    } finally {
+      setDeletingId("");
+    }
   };
 
   return (
@@ -525,7 +710,7 @@ function VoiceStudioPage() {
           </div>
           <button
             className="voice-primary-button"
-            onClick={() => setModalOpen(true)}
+            onClick={openCreate}
             type="button"
           >
             <Icon name="plus" size={17} />
@@ -544,7 +729,7 @@ function VoiceStudioPage() {
             icon="voice"
             label="Voice samples"
             tone="pink"
-            value="0"
+            value={totalSamples}
           />
           <StatCard
             icon="document"
@@ -554,7 +739,7 @@ function VoiceStudioPage() {
           />
         </section>
 
-        {characters.length ? (
+        {!loading && !loadError && characters.length ? (
           <section className="voice-toolbar">
             <input
               aria-label="Search characters"
@@ -576,8 +761,27 @@ function VoiceStudioPage() {
           </section>
         ) : null}
 
-        {!characters.length ? (
-          <EmptyState onCreate={() => setModalOpen(true)} />
+        {loading ? (
+          <section className="voice-request-state">
+            <span className="voice-loading-spinner" />
+            <h2>Loading voice characters</h2>
+            <p>Connecting to Shadower Backend...</p>
+          </section>
+        ) : loadError ? (
+          <section className="voice-request-state error">
+            <Icon name="voice" size={27} />
+            <h2>Unable to load Voice Studio</h2>
+            <p>{loadError}</p>
+            <button
+              className="voice-primary-button"
+              onClick={loadCharacters}
+              type="button"
+            >
+              Try Again
+            </button>
+          </section>
+        ) : !characters.length ? (
+          <EmptyState onCreate={openCreate} />
         ) : !filteredCharacters.length ? (
           <section className="voice-no-results">
             <Icon name="user" size={25} />
@@ -587,21 +791,30 @@ function VoiceStudioPage() {
         ) : (
           <section className="voice-character-grid">
             {filteredCharacters.map((character) => (
-              <CharacterCard character={character} key={character.id} />
+              <CharacterCard
+                character={character}
+                deleting={deletingId === character.id}
+                key={character.id}
+                onDelete={() => removeCharacter(character)}
+                onEdit={() => openEdit(character)}
+              />
             ))}
           </section>
         )}
       </div>
 
-      <CreateCharacterModal
-        onClose={() => setModalOpen(false)}
-        onCreate={createCharacter}
+      <CharacterModal
+        character={editingCharacter}
+        onClose={closeModal}
+        onSubmit={saveCharacter}
         open={modalOpen}
+        saving={saving}
+        submitError={submitError}
       />
 
       {notice ? (
-        <div className="voice-toast" role="status">
-          <span>✓</span>
+        <div className={`voice-toast ${noticeType}`} role="status">
+          <span>{noticeType === "error" ? "!" : "✓"}</span>
           {notice}
         </div>
       ) : null}
