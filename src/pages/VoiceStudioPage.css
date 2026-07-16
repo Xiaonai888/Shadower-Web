@@ -370,6 +370,19 @@
   background: currentColor;
 }
 
+.voice-status-badge.ready,
+.voice-status-badge.ready-to-clone {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 24%, var(--border));
+  background: color-mix(in srgb, var(--success) 8%, var(--panel-solid));
+}
+
+.voice-status-badge.failed {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 24%, var(--border));
+  background: color-mix(in srgb, var(--danger) 8%, var(--panel-solid));
+}
+
 .voice-character-description {
   min-height: 39px;
   margin: 15px 0 0;
@@ -434,6 +447,90 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
+}
+
+.voice-character-actions {
+  display: grid;
+  margin-top: 13px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.voice-card-action {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-soft);
+  background: var(--panel-solid);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.voice-card-action:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: var(--accent-soft);
+}
+
+.voice-card-action.danger {
+  color: var(--danger);
+}
+
+.voice-card-action.danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  background: var(--danger-bg);
+}
+
+.voice-request-state {
+  display: flex;
+  min-height: 320px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  margin-top: 18px;
+  padding: 40px 24px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  color: var(--muted);
+  background: var(--panel-solid);
+  box-shadow: var(--soft-shadow);
+  text-align: center;
+}
+
+.voice-request-state h2 {
+  margin: 17px 0 0;
+  color: var(--text);
+  font-size: 18px;
+}
+
+.voice-request-state p {
+  max-width: 460px;
+  margin: 8px 0 19px;
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.voice-request-state.error > svg {
+  color: var(--danger);
+}
+
+.voice-loading-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: voice-spin 700ms linear infinite;
+}
+
+@keyframes voice-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .voice-modal-layer {
@@ -697,6 +794,17 @@
   font-style: normal;
 }
 
+.voice-form-server-error {
+  margin-top: 14px;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));
+  border-radius: 10px;
+  color: var(--danger);
+  background: var(--danger-bg);
+  font-size: 8.5px;
+  line-height: 1.55;
+}
+
 .voice-modal-footer {
   display: flex;
   justify-content: flex-end;
@@ -732,6 +840,10 @@
   border-radius: 50%;
   background: var(--success);
   font-size: 10px;
+}
+
+.voice-toast.error span {
+  background: var(--danger);
 }
 
 @media (max-width: 1040px) {
