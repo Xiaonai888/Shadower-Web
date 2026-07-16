@@ -4,6 +4,7 @@ import ComingSoon from "./components/ComingSoon";
 import RightPanel from "./components/RightPanel";
 import Sidebar from "./components/Sidebar";
 import Topbar from "./components/Topbar";
+import VoiceStudioPage from "./pages/VoiceStudioPage";
 import { topTabs } from "./data/uiData";
 import {
   checkBackendHealth,
@@ -655,6 +656,8 @@ const removeChat = async (chat) => {
               />
               <RightPanel onPrompt={handlePrompt} />
             </>
+                    ) : activeView === "voice" ? (
+            <VoiceStudioPage />
           ) : (
             <ComingSoon
               icon={selectedTab?.icon || "sparkles"}
