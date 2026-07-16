@@ -8,7 +8,15 @@ const themes = [
   { id: "purple", label: "Purple", icon: "sparkles" }
 ];
 
-function Topbar({ activeView, backendStatus, onRefreshBackend, onViewChange, onThemeChange, theme }) {
+function Topbar({
+  activeView,
+  backendStatus,
+  onOpenSidebar,
+  onRefreshBackend,
+  onThemeChange,
+  onViewChange,
+  theme
+}) {
   const [themeOpen, setThemeOpen] = useState(false);
   const themeRef = useRef(null);
 
@@ -33,7 +41,16 @@ function Topbar({ activeView, backendStatus, onRefreshBackend, onViewChange, onT
 
   return (
     <header className="topbar">
-      <div className="top-tabs" role="tablist" aria-label="Shadower tools">
+  <button
+    aria-label="Open chat menu"
+    className="mobile-sidebar-toggle"
+    onClick={onOpenSidebar}
+    type="button"
+  >
+    ☰
+  </button>
+
+  <div className="top-tabs" role="tablist" aria-label="Shadower tools">
         {topTabs.map((tab) => (
           <button
             className={`top-tab ${activeView === tab.id ? "active" : ""}`}
