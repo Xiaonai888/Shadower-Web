@@ -2,7 +2,7 @@ export const topTabs = [
   { id: "chat", label: "Chat", icon: "feather", enabled: true },
   { id: "story", label: "Manage Story", icon: "story", enabled: false },
   { id: "manga", label: "Manga Story", icon: "book", enabled: false },
-  { id: "voice", label: "Clone Voice", icon: "voice", enabled: false }
+  { id: "voice", label: "Clone Voice", icon: "voice", enabled: true }
 ];
 
 export const sideNavigation = [
@@ -10,7 +10,7 @@ export const sideNavigation = [
   { id: "library", label: "Library", icon: "library", enabled: false },
   { id: "bookmarks", label: "Bookmarks", icon: "bookmark", enabled: false },
   { id: "templates", label: "Templates", icon: "template", enabled: false },
-  { id: "audio", label: "Voice & Audio", icon: "voice", enabled: false },
+  { id: "voice", label: "Voice & Audio", icon: "voice", enabled: true },
   { id: "settings", label: "Settings", icon: "settings", enabled: false }
 ];
 
