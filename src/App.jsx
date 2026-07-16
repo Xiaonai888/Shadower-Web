@@ -222,7 +222,6 @@ function App() {
   const [selectedModel, setSelectedModel] = useState(storedSelection.model);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [theme, setTheme] = useState(getStoredTheme);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const inputRef = useRef(null);
   const messagesEndRef = useRef(null);
 
@@ -595,7 +594,7 @@ const removeChat = async (chat) => {
   const selectedTab = topTabs.find((item) => item.id === activeView);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell mobile-drawer-enabled">
       <Sidebar
   activeView={activeView}
   chats={chatSessions}
