@@ -222,6 +222,7 @@ function App() {
   const [selectedModel, setSelectedModel] = useState(storedSelection.model);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [theme, setTheme] = useState(getStoredTheme);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const inputRef = useRef(null);
   const messagesEndRef = useRef(null);
 
