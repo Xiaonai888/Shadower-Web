@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Icon from "../components/Icon";
 import {
+  completeVoiceAvatarUpload,
   completeVoiceSampleUpload,
   createVoiceCharacter,
+  deleteVoiceAvatar,
   deleteVoiceCharacter,
   deleteVoiceSample,
   getVoiceCharacters,
   getVoiceSamplePlayUrl,
   getVoiceSamples,
+  requestVoiceAvatarUpload,
   requestVoiceSampleUpload,
   updateVoiceCharacter,
   updateVoiceSample,
@@ -15,11 +18,13 @@ import {
 } from "../services/voiceApi";
 import "./VoiceStudioPage.css";
 import "./VoiceSamplesModal.css";
+import "./VoiceCharacterAvatar.css";
 
 const LEGACY_STORAGE_KEY = "shadower_voice_characters_v1";
 const MIGRATION_KEY = "shadower_voice_characters_api_migrated_v1";
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_FILES_PER_BATCH = 20;
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
 const LANGUAGES = [
   "English",
@@ -50,7 +55,15 @@ const MIME_BY_EXTENSION = {
   flac: "audio/flac"
 };
 
+const IMAGE_MIME_BY_EXTENSION = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp"
+};
+
 const ALLOWED_MIME_TYPES = new Set(Object.values(MIME_BY_EXTENSION));
+const ALLOWED_IMAGE_TYPES = new Set(Object.values(IMAGE_MIME_BY_EXTENSION));
 
 const EMPTY_FORM = {
   name: "",
@@ -171,6 +184,13 @@ function getFileMimeType(file) {
   return MIME_BY_EXTENSION[extension] || "";
 }
 
+function getImageMimeType(file) {
+  const browserType = file.type?.split(";", 1)[0].trim().toLowerCase();
+  if (ALLOWED_IMAGE_TYPES.has(browserType)) return browserType;
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  return IMAGE_MIME_BY_EXTENSION[extension] || "";
+}
+
 function getAudioDuration(file) {
   return new Promise((resolve, reject) => {
     const objectUrl = URL.createObjectURL(file);
@@ -259,7 +279,7 @@ function CharacterCard({
       <div className="voice-character-head">
         {character.avatarUrl ? (
           <img
-            alt=""
+            alt={`${character.name} profile`}
             className="voice-character-avatar"
             src={character.avatarUrl}
           />
@@ -338,6 +358,7 @@ function Field({ children, error, label, required }) {
 
 function getCharacterForm(character) {
   if (!character) return EMPTY_FORM;
+
   return {
     name: character.name || "",
     displayName: character.displayName || "",
@@ -359,36 +380,98 @@ function CharacterModal({
 }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarMimeType, setAvatarMimeType] = useState("");
+  const [avatarPreview, setAvatarPreview] = useState("");
+  const [removeAvatar, setRemoveAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
   const nameInputRef = useRef(null);
+  const avatarInputRef = useRef(null);
+  const localAvatarUrlRef = useRef("");
   const editing = Boolean(character);
+
+  const clearLocalAvatarUrl = () => {
+    if (localAvatarUrlRef.current) {
+      URL.revokeObjectURL(localAvatarUrlRef.current);
+      localAvatarUrlRef.current = "";
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
+
+    clearLocalAvatarUrl();
     setForm(getCharacterForm(character));
     setErrors({});
+    setAvatarFile(null);
+    setAvatarMimeType("");
+    setAvatarPreview(character?.avatarUrl || "");
+    setRemoveAvatar(false);
+    setAvatarError("");
   }, [character, open]);
 
   useEffect(() => {
     if (!open) return undefined;
+
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const focusTimer = window.setTimeout(() => nameInputRef.current?.focus(), 80);
     const closeOnEscape = (event) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !saving) onClose();
     };
+
     window.addEventListener("keydown", closeOnEscape);
+
     return () => {
       window.clearTimeout(focusTimer);
       window.removeEventListener("keydown", closeOnEscape);
       document.body.style.overflow = previousOverflow;
+      clearLocalAvatarUrl();
     };
-  }, [onClose, open]);
+  }, [onClose, open, saving]);
 
   if (!open) return null;
 
   const updateField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: "" }));
+  };
+
+  const chooseAvatar = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    const mimeType = getImageMimeType(file);
+
+    if (!mimeType) {
+      setAvatarError("Use a JPG, PNG, or WEBP profile image.");
+      return;
+    }
+
+    if (!file.size || file.size > MAX_AVATAR_BYTES) {
+      setAvatarError("Profile image must be 5 MB or smaller.");
+      return;
+    }
+
+    clearLocalAvatarUrl();
+    const previewUrl = URL.createObjectURL(file);
+    localAvatarUrlRef.current = previewUrl;
+    setAvatarFile(file);
+    setAvatarMimeType(mimeType);
+    setAvatarPreview(previewUrl);
+    setRemoveAvatar(false);
+    setAvatarError("");
+  };
+
+  const removeSelectedAvatar = () => {
+    clearLocalAvatarUrl();
+    setAvatarFile(null);
+    setAvatarMimeType("");
+    setAvatarPreview("");
+    setRemoveAvatar(Boolean(character?.hasAvatar || character?.avatarUrl));
+    setAvatarError("");
   };
 
   const submit = (event) => {
@@ -398,23 +481,32 @@ function CharacterModal({
     if (!form.name.trim()) {
       nextErrors.name = "Character name is required.";
     }
+
     if (!editing && !form.permissionConfirmed) {
       nextErrors.permissionConfirmed =
         "Please confirm that you own the voice or have permission.";
     }
+
     if (Object.keys(nextErrors).length) {
       setErrors(nextErrors);
       return;
     }
 
     onSubmit({
-      name: form.name.trim(),
-      displayName: form.displayName.trim() || null,
-      language: form.language,
-      voiceRole: form.voiceRole,
-      linkedStory: form.linkedStory.trim() || null,
-      description: form.description.trim() || null,
-      ...(editing ? {} : { permissionConfirmed: true })
+      form: {
+        name: form.name.trim(),
+        displayName: form.displayName.trim() || null,
+        language: form.language,
+        voiceRole: form.voiceRole,
+        linkedStory: form.linkedStory.trim() || null,
+        description: form.description.trim() || null,
+        ...(editing ? {} : { permissionConfirmed: true })
+      },
+      avatar: {
+        file: avatarFile,
+        mimeType: avatarMimeType,
+        remove: removeAvatar
+      }
     });
   };
 
@@ -444,8 +536,8 @@ function CharacterModal({
             </h2>
             <p>
               {editing
-                ? "Update this character profile."
-                : "Create the profile and add voice samples next."}
+                ? "Update the profile, image and character details."
+                : "Create the profile, then add voice samples."}
             </p>
           </div>
           <button
@@ -461,20 +553,53 @@ function CharacterModal({
 
         <form onSubmit={submit}>
           <div className="voice-modal-body">
-            <div className="voice-avatar-row">
-              <div className="voice-avatar-upload">
-                {character?.avatarUrl ? (
-                  <img alt="Character avatar" src={character.avatarUrl} />
+            <div className="voice-avatar-editor">
+              <div className="voice-avatar-preview">
+                {avatarPreview ? (
+                  <img alt="Character profile preview" src={avatarPreview} />
                 ) : (
-                  <>
-                    <Icon name="user" size={26} />
-                    <span>Avatar</span>
-                  </>
+                  <Icon name="user" size={29} />
                 )}
               </div>
-              <div>
-                <strong>Character avatar</strong>
-                <p>Avatar upload will be connected with cloud storage later.</p>
+
+              <div className="voice-avatar-editor-copy">
+                <strong>Character profile image</strong>
+                <small>JPG, PNG or WEBP · Maximum 5 MB · Stored privately in Cloudflare R2</small>
+                {avatarFile ? (
+                  <div className="voice-avatar-file-name">{avatarFile.name}</div>
+                ) : null}
+
+                <div className="voice-avatar-actions">
+                  <input
+                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                    className="voice-avatar-input"
+                    onChange={chooseAvatar}
+                    ref={avatarInputRef}
+                    type="file"
+                  />
+                  <button
+                    className="voice-avatar-action"
+                    disabled={saving}
+                    onClick={() => avatarInputRef.current?.click()}
+                    type="button"
+                  >
+                    {avatarPreview ? "Replace Image" : "Choose Image"}
+                  </button>
+                  {avatarPreview ? (
+                    <button
+                      className="voice-avatar-action danger"
+                      disabled={saving}
+                      onClick={removeSelectedAvatar}
+                      type="button"
+                    >
+                      Remove
+                    </button>
+                  ) : null}
+                </div>
+
+                {avatarError ? (
+                  <div className="voice-avatar-error">{avatarError}</div>
+                ) : null}
               </div>
             </div>
 
@@ -637,6 +762,7 @@ function VoiceSamplesModal({
     if (!character?.id) return;
     setLoading(true);
     setLoadError("");
+
     try {
       const data = await getVoiceSamples(character.id);
       setSamples(Array.isArray(data.samples) ? data.samples : []);
@@ -657,12 +783,15 @@ function VoiceSamplesModal({
 
   useEffect(() => {
     if (!open) return undefined;
+
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const closeOnEscape = (event) => {
       if (event.key === "Escape" && !uploading) onClose();
     };
+
     window.addEventListener("keydown", closeOnEscape);
+
     return () => {
       window.removeEventListener("keydown", closeOnEscape);
       document.body.style.overflow = previousOverflow;
@@ -683,6 +812,7 @@ function VoiceSamplesModal({
       MAX_FILES_PER_BATCH
     );
     event.target.value = "";
+
     if (!selectedFiles.length || uploading) return;
 
     const queueItems = selectedFiles.map((file, index) => ({
@@ -692,6 +822,7 @@ function VoiceSamplesModal({
       status: "waiting",
       message: "Waiting"
     }));
+
     setQueue(queueItems);
     setUploading(true);
     let successCount = 0;
@@ -703,9 +834,11 @@ function VoiceSamplesModal({
 
       try {
         const mimeType = getFileMimeType(file);
+
         if (!mimeType) {
           throw new Error("Use MP3, WAV, M4A, AAC, OGG, WEBM, or FLAC audio");
         }
+
         if (!file.size || file.size > MAX_FILE_BYTES) {
           throw new Error("Each audio file must be between 1 byte and 100 MB");
         }
@@ -714,6 +847,7 @@ function VoiceSamplesModal({
           status: "processing",
           message: "Reading audio metadata"
         });
+
         const durationSeconds = await getAudioDuration(file);
         const prepared = await requestVoiceSampleUpload(
           character.id,
@@ -726,6 +860,7 @@ function VoiceSamplesModal({
           status: "uploading",
           message: "Uploading to Cloudflare R2"
         });
+
         await uploadVoiceFile(prepared.upload, file, (progress) => {
           updateQueue(item.id, { progress });
         });
@@ -735,10 +870,12 @@ function VoiceSamplesModal({
           preparedSampleId,
           durationSeconds
         );
+
         setSamples((current) => [
           completed.sample,
           ...current.filter((sample) => sample.id !== completed.sample.id)
         ]);
+
         updateQueue(item.id, {
           progress: 100,
           status: "success",
@@ -749,6 +886,7 @@ function VoiceSamplesModal({
         if (preparedSampleId) {
           deleteVoiceSample(character.id, preparedSampleId).catch(() => {});
         }
+
         updateQueue(item.id, {
           status: "error",
           message: error.message || "Upload failed"
@@ -757,6 +895,7 @@ function VoiceSamplesModal({
     }
 
     setUploading(false);
+
     if (successCount) {
       await loadSamples();
       await onSamplesChanged?.();
@@ -764,6 +903,7 @@ function VoiceSamplesModal({
         `${successCount} voice sample${successCount === 1 ? "" : "s"} uploaded successfully.`
       );
     }
+
     if (successCount < selectedFiles.length) {
       onNotice?.(
         `${selectedFiles.length - successCount} audio file${
@@ -776,6 +916,7 @@ function VoiceSamplesModal({
 
   const loadPlayer = async (sample) => {
     setLoadingPlayerId(sample.id);
+
     try {
       const data = await getVoiceSamplePlayUrl(character.id, sample.id);
       setPlayUrls((current) => ({ ...current, [sample.id]: data.url }));
@@ -788,6 +929,7 @@ function VoiceSamplesModal({
 
   const toggleTraining = async (sample, includeInTraining) => {
     setUpdatingId(sample.id);
+
     try {
       const data = await updateVoiceSample(character.id, sample.id, {
         includeInTraining
@@ -807,6 +949,7 @@ function VoiceSamplesModal({
     if (!confirmed) return;
 
     setDeletingId(sample.id);
+
     try {
       await deleteVoiceSample(character.id, sample.id);
       setSamples((current) => current.filter((item) => item.id !== sample.id));
@@ -963,7 +1106,10 @@ function VoiceSamplesModal({
                     <div className="voice-sample-actions">
                       <button
                         className="voice-sample-button"
-                        disabled={sample.status !== "ready" || loadingPlayerId === sample.id}
+                        disabled={
+                          sample.status !== "ready" ||
+                          loadingPlayerId === sample.id
+                        }
                         onClick={() => loadPlayer(sample)}
                         type="button"
                       >
@@ -1042,23 +1188,28 @@ function VoiceStudioPage() {
     const serverCharacters = Array.isArray(data.characters)
       ? data.characters
       : [];
+
     if (!migrate) {
       setCharacters(serverCharacters);
       return serverCharacters;
     }
+
     const migrated = await migrateLegacyCharacters(serverCharacters);
     setCharacters(migrated.characters);
+
     if (migrated.migratedCount) {
       showNotice(
         `${migrated.migratedCount} browser character saved to the database.`
       );
     }
+
     return migrated.characters;
   };
 
   const loadCharacters = async () => {
     setLoading(true);
     setLoadError("");
+
     try {
       await fetchCharacters({ migrate: true });
     } catch (error) {
@@ -1071,6 +1222,7 @@ function VoiceStudioPage() {
   const refreshCharacters = async () => {
     try {
       const refreshed = await fetchCharacters();
+
       if (managingCharacter) {
         const updated = refreshed.find(
           (item) => item.id === managingCharacter.id
@@ -1094,6 +1246,7 @@ function VoiceStudioPage() {
 
   const filteredCharacters = useMemo(() => {
     const query = search.trim().toLowerCase();
+
     return characters.filter((character) => {
       const languageMatches =
         language === "All languages" || character.language === language;
@@ -1107,6 +1260,7 @@ function VoiceStudioPage() {
         ]
           .filter(Boolean)
           .some((value) => value.toLowerCase().includes(query));
+
       return languageMatches && searchMatches;
     });
   }, [characters, language, search]);
@@ -1135,26 +1289,60 @@ function VoiceStudioPage() {
     setSubmitError("");
   };
 
-  const saveCharacter = async (form) => {
+  const saveCharacter = async ({ form, avatar }) => {
     setSaving(true);
     setSubmitError("");
+    let createdCharacter = null;
+
     try {
-      if (editingCharacter) {
-        const data = await updateVoiceCharacter(editingCharacter.id, form);
-        setCharacters((current) =>
-          current.map((item) =>
-            item.id === editingCharacter.id ? data.character : item
-          )
+      const saved = editingCharacter
+        ? await updateVoiceCharacter(editingCharacter.id, form)
+        : await createVoiceCharacter({ ...form, avatarUrl: null });
+
+      createdCharacter = editingCharacter ? null : saved.character;
+      let finalCharacter = saved.character;
+
+      if (avatar.file) {
+        const prepared = await requestVoiceAvatarUpload(
+          finalCharacter.id,
+          avatar.file,
+          avatar.mimeType
         );
-        showNotice(`${data.character.name} was updated successfully.`);
-      } else {
-        const data = await createVoiceCharacter({ ...form, avatarUrl: null });
-        setCharacters((current) => [data.character, ...current]);
-        showNotice(`${data.character.name} was created successfully.`);
+        await uploadVoiceFile(prepared.upload, avatar.file);
+        const completed = await completeVoiceAvatarUpload(
+          finalCharacter.id,
+          prepared.avatar
+        );
+        finalCharacter = completed.character;
+      } else if (avatar.remove && finalCharacter.hasAvatar) {
+        const removed = await deleteVoiceAvatar(finalCharacter.id);
+        finalCharacter = removed.character;
       }
+
+      setCharacters((current) => {
+        if (editingCharacter) {
+          return current.map((item) =>
+            item.id === finalCharacter.id ? finalCharacter : item
+          );
+        }
+
+        return [
+          finalCharacter,
+          ...current.filter((item) => item.id !== finalCharacter.id)
+        ];
+      });
+
+      showNotice(
+        `${finalCharacter.name} was ${
+          editingCharacter ? "updated" : "created"
+        } successfully.`
+      );
       setModalOpen(false);
       setEditingCharacter(null);
     } catch (error) {
+      if (createdCharacter?.id) {
+        await deleteVoiceCharacter(createdCharacter.id).catch(() => {});
+      }
       setSubmitError(error.message || "Unable to save this character.");
     } finally {
       setSaving(false);
@@ -1168,6 +1356,7 @@ function VoiceStudioPage() {
     if (!confirmed) return;
 
     setDeletingId(character.id);
+
     try {
       await deleteVoiceCharacter(character.id);
       setCharacters((current) =>
@@ -1192,8 +1381,8 @@ function VoiceStudioPage() {
             </span>
             <h1>Voice Characters</h1>
             <p>
-              Create characters, upload multiple voice samples, preview them and
-              add or remove samples whenever you need.
+              Create characters, store profile images and voice samples in
+              Cloudflare R2, preview audio and update each profile anytime.
             </p>
           </div>
           <button
