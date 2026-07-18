@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import Icon from "./Icon";
+import MessageFeedback from "./MessageFeedback";
 import { IntelligenceSelector } from "./ModelSelector";
 import { greetingSuggestions } from "../data/uiData";
 
@@ -89,12 +90,15 @@ function MessageList({
             <div className="message-meta">
               <strong>{message.role === "assistant" ? "Shadower" : "You"}</strong>
               <time>{message.time}</time>
-              
             </div>
             <div className="message-bubble">
               <p>{message.text}</p>
               {message.role === "assistant" && (
                 <div className="message-actions">
+                  <MessageFeedback
+                    answerText={message.text}
+                    messageId={message.id}
+                  />
                   <button aria-label="More actions" type="button">
                     <Icon name="more" size={16} />
                   </button>
@@ -186,18 +190,18 @@ function Composer({
       />
 
       <div className="composer-toolbar">
-  <div className="send-area">
-    <IntelligenceSelector
-  available={myAIAvailable}
-  disabled={isSending}
-  intelligence={intelligence}
-  levels={intelligenceLevels}
-  loading={modelsLoading}
-  models={models}
-  onModelSelect={onModelSelect}
-  onSelect={onIntelligenceChange}
-  selectedModel={selectedModel}
-/>
+        <div className="send-area">
+          <IntelligenceSelector
+            available={myAIAvailable}
+            disabled={isSending}
+            intelligence={intelligence}
+            levels={intelligenceLevels}
+            loading={modelsLoading}
+            models={models}
+            onModelSelect={onModelSelect}
+            onSelect={onIntelligenceChange}
+            selectedModel={selectedModel}
+          />
           <button
             aria-label="Send message"
             className="send-button"
