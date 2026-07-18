@@ -6,6 +6,7 @@ import "./modelSelector.css";
 import "./profileMenu.css";
 import "./composerUpdate.css";
 import "./mobileSidebar.css";
+import "./messageFeedback.css";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
