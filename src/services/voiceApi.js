@@ -56,6 +56,30 @@ export function deleteVoiceCharacter(characterId) {
   return request(`/api/voice/characters/${characterId}`, { method: "DELETE" });
 }
 
+export function requestVoiceAvatarUpload(characterId, file, mimeType) {
+  return request(
+    `/api/voice/characters/${characterId}/avatar/upload-url`,
+    jsonOptions("POST", {
+      fileName: file.name,
+      mimeType,
+      fileSizeBytes: file.size
+    })
+  );
+}
+
+export function completeVoiceAvatarUpload(characterId, avatar) {
+  return request(
+    `/api/voice/characters/${characterId}/avatar/complete`,
+    jsonOptions("POST", avatar)
+  );
+}
+
+export function deleteVoiceAvatar(characterId) {
+  return request(`/api/voice/characters/${characterId}/avatar`, {
+    method: "DELETE"
+  });
+}
+
 export function getVoiceSamples(characterId, limit = 200) {
   return request(
     `/api/voice/characters/${characterId}/samples?limit=${limit}`
@@ -98,13 +122,13 @@ export function uploadVoiceFile(upload, file, onProgress) {
     });
 
     xhr.addEventListener("error", () => {
-      reject(new Error("Unable to upload this audio file to Cloudflare R2"));
+      reject(new Error("Unable to upload this file to Cloudflare R2"));
     });
     xhr.addEventListener("timeout", () => {
-      reject(new Error("Audio upload timed out"));
+      reject(new Error("File upload timed out"));
     });
     xhr.addEventListener("abort", () => {
-      reject(new Error("Audio upload was cancelled"));
+      reject(new Error("File upload was cancelled"));
     });
 
     xhr.send(file);
