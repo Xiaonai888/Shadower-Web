@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Icon from "../components/Icon";
+import { generateKhmerVoice, getVoiceSamples } from "../services/voiceApi";
 
 const MODELS = [
   { id: "natural-v1", label: "Natural v1" },
@@ -25,8 +26,8 @@ const EMOTIONS = [
 ];
 
 const LANGUAGES = [
-  "English",
   "Khmer",
+  "English",
   "Chinese",
   "Korean",
   "Japanese",
@@ -34,6 +35,7 @@ const LANGUAGES = [
   "Vietnamese",
   "Other"
 ];
+const MAX_TEST_TEXT = 250;
 
 function PlayIcon({ size = 18 }) {
   return (
@@ -124,6 +126,13 @@ function getInitials(name = "") {
   );
 }
 
+function formatClock(seconds = 0) {
+  const safe = Number.isFinite(seconds) ? Math.max(seconds, 0) : 0;
+  const minutes = Math.floor(safe / 60);
+  const remaining = Math.floor(safe % 60);
+  return `${String(minutes).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`;
+}
+
 function SliderField({ icon, label, max, min, onChange, step, suffix, value }) {
   return (
     <label className="voice-create-setting-card">
@@ -155,15 +164,23 @@ function VoiceStudioCreatePanel({
   onOpenVoices,
   onRetry
 }) {
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [audioTime, setAudioTime] = useState(0);
+  const [audioUrl, setAudioUrl] = useState("");
   const [characterId, setCharacterId] = useState("");
   const [emotion, setEmotion] = useState("Neutral");
-  const [language, setLanguage] = useState("English");
+  const [generating, setGenerating] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [language, setLanguage] = useState("Khmer");
   const [model, setModel] = useState("natural-v1");
   const [pitch, setPitch] = useState(0);
   const [quality, setQuality] = useState("high");
-  const [script, setScript] = useState("");
+  const [script, setScript] = useState(
+    "បើខ្ញុំខំរៀនខ្ញុំមុខជារស់ស្រួលនៅថ្ងៃក្រោយ"
+  );
   const [speed, setSpeed] = useState(1);
   const [stability, setStability] = useState(75);
+  const audioRef = useRef(null);
   const textareaRef = useRef(null);
 
   useEffect(() => {
@@ -179,73 +196,137 @@ function VoiceStudioCreatePanel({
     );
   }, [characters]);
 
+  useEffect(
+    () => () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    },
+    [audioUrl]
+  );
+
   const selectedCharacter = useMemo(
     () => characters.find((character) => character.id === characterId) || null,
     [characterId, characters]
   );
 
-  useEffect(() => {
-    if (selectedCharacter?.language) {
-      setLanguage(selectedCharacter.language);
-    }
-  }, [selectedCharacter?.id, selectedCharacter?.language]);
-
   const insertPause = () => {
     const input = textareaRef.current;
-    const token = "[pause 0.5s]";
-
-    if (!input) {
-      setScript((current) => `${current}${current ? " " : ""}${token}`);
-      return;
-    }
-
-    const start = input.selectionStart ?? script.length;
-    const end = input.selectionEnd ?? script.length;
-    const before = script.slice(0, start);
-    const after = script.slice(end);
-    const prefix = before && !before.endsWith(" ") ? " " : "";
-    const suffix = after && !after.startsWith(" ") ? " " : "";
-    const next = `${before}${prefix}${token}${suffix}${after}`.slice(0, 5000);
+    const token = " ... ";
+    const start = input?.selectionStart ?? script.length;
+    const end = input?.selectionEnd ?? script.length;
+    const next = `${script.slice(0, start)}${token}${script.slice(end)}`.slice(
+      0,
+      MAX_TEST_TEXT
+    );
 
     setScript(next);
     window.setTimeout(() => {
-      const cursor = Math.min(
-        start + prefix.length + token.length + suffix.length,
-        next.length
-      );
-      input.focus();
-      input.setSelectionRange(cursor, cursor);
+      const cursor = Math.min(start + token.length, next.length);
+      input?.focus();
+      input?.setSelectionRange(cursor, cursor);
     }, 0);
   };
 
   const improveScript = () => {
     if (!script.trim()) {
-      onNotice("Write or paste your script first.", "error");
+      onNotice("Write or paste your Khmer text first.", "error");
       return;
     }
 
-    onNotice("AI Improve will be connected with the voice engine in the next stage.", "info");
+    onNotice("AI Improve will be connected after Khmer voice generation works.", "info");
   };
 
-  const generateVoice = () => {
+  const clearAudio = () => {
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    setAudioUrl("");
+    setAudioDuration(0);
+    setAudioTime(0);
+    setIsPlaying(false);
+  };
+
+  const generateVoice = async () => {
     if (!selectedCharacter) {
       onNotice("Create or select a voice character first.", "error");
       return;
     }
 
     if (!script.trim()) {
-      onNotice("Write the text you want the character to speak.", "error");
+      onNotice("Write the Khmer text you want the character to speak.", "error");
       textareaRef.current?.focus();
       return;
     }
 
-    if (!(Number(selectedCharacter.sampleCount) > 0)) {
-      onNotice("Add voice samples to this character before generating audio.", "error");
+    if (script.trim().length > MAX_TEST_TEXT) {
+      onNotice(`Use no more than ${MAX_TEST_TEXT} characters for the first test.`, "error");
       return;
     }
 
-    onNotice("The Create Audio interface is ready. The generation engine is the next stage.", "info");
+    if (!(Number(selectedCharacter.sampleCount) > 0)) {
+      onNotice("Add a voice sample to this character before generating audio.", "error");
+      return;
+    }
+
+    setGenerating(true);
+    clearAudio();
+    onNotice("Generating Khmer voice. The first request can take a few minutes.", "info");
+
+    try {
+      const sampleData = await getVoiceSamples(selectedCharacter.id);
+      const samples = Array.isArray(sampleData.samples) ? sampleData.samples : [];
+      const sample =
+        samples.find(
+          (item) => item.status === "ready" && item.includeInTraining
+        ) || samples.find((item) => item.status === "ready");
+
+      if (!sample) {
+        throw new Error("This character has no ready voice sample.");
+      }
+
+      const audioBlob = await generateKhmerVoice({
+        characterId: selectedCharacter.id,
+        sampleId: sample.id,
+        text: script.trim(),
+        language,
+        model,
+        quality,
+        speed,
+        pitch,
+        emotion,
+        stability
+      });
+
+      const nextUrl = URL.createObjectURL(audioBlob);
+      setAudioUrl(nextUrl);
+      onNotice("Khmer voice was generated. Press Play to listen.", "success");
+    } catch (error) {
+      onNotice(error.message || "Unable to generate Khmer voice.", "error");
+    } finally {
+      setGenerating(false);
+    }
   };
+
+  const togglePlayback = async () => {
+    const player = audioRef.current;
+    if (!player || !audioUrl) return;
+
+    if (player.paused) {
+      await player.play();
+    } else {
+      player.pause();
+    }
+  };
+
+  const downloadAudio = () => {
+    if (!audioUrl) return;
+    const link = document.createElement("a");
+    link.href = audioUrl;
+    link.download = `${selectedCharacter?.name || "shadower"}-khmer-voice.wav`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
+  const progress =
+    audioDuration > 0 ? Math.min((audioTime / audioDuration) * 100, 100) : 0;
 
   return (
     <section className="voice-create-panel">
@@ -253,7 +334,7 @@ function VoiceStudioCreatePanel({
         <div className="voice-create-section-heading">
           <div>
             <span>Select voice</span>
-            <p>Choose the character that will speak your text.</p>
+            <p>Choose the character that will speak your Khmer text.</p>
           </div>
           <button onClick={onOpenVoices} type="button">
             Manage Voices
@@ -367,19 +448,19 @@ function VoiceStudioCreatePanel({
         <div className="voice-create-section-heading">
           <div>
             <span>Text to speech</span>
-            <p>Write clearly and use pause markers for more natural delivery.</p>
+            <p>First Khmer test · maximum {MAX_TEST_TEXT} characters.</p>
           </div>
         </div>
 
         <div className="voice-create-textarea-wrap">
           <textarea
-            maxLength={5000}
+            maxLength={MAX_TEST_TEXT}
             onChange={(event) => setScript(event.target.value)}
-            placeholder="Type or paste the text you want the voice to speak..."
+            placeholder="សរសេរអត្ថបទខ្មែរដែលចង់ឱ្យសំឡេងនេះនិយាយ..."
             ref={textareaRef}
             value={script}
           />
-          <span>{script.length} / 5000</span>
+          <span>{script.length} / {MAX_TEST_TEXT}</span>
         </div>
 
         <div className="voice-create-script-actions">
@@ -398,7 +479,11 @@ function VoiceStudioCreatePanel({
             </button>
           </div>
 
-          <button className="voice-create-ai-button" onClick={improveScript} type="button">
+          <button
+            className="voice-create-ai-button"
+            onClick={improveScript}
+            type="button"
+          >
             <Icon name="sparkles" size={16} />
             AI Improve
           </button>
@@ -409,7 +494,7 @@ function VoiceStudioCreatePanel({
         <div className="voice-create-section-heading">
           <div>
             <span>Voice settings</span>
-            <p>Fine-tune the tone without changing the original voice identity.</p>
+            <p>Settings will be activated gradually after the first successful sound.</p>
           </div>
         </div>
 
@@ -466,11 +551,12 @@ function VoiceStudioCreatePanel({
 
       <button
         className="voice-create-generate-button"
+        disabled={generating}
         onClick={generateVoice}
         type="button"
       >
         <Icon name="sparkles" size={19} />
-        Generate Voice
+        {generating ? "Generating Khmer Voice..." : "Generate Voice"}
       </button>
 
       <div className="voice-create-section voice-create-output-section">
@@ -487,23 +573,64 @@ function VoiceStudioCreatePanel({
               <Icon name="voice" size={22} />
             </span>
             <div>
-              <strong>No audio generated yet</strong>
-              <small>Generate audio to preview, save, or download it.</small>
+              <strong>
+                {audioUrl ? "Khmer voice generated" : "No audio generated yet"}
+              </strong>
+              <small>
+                {audioUrl
+                  ? "Press Play to listen or Download to save the WAV file."
+                  : "Generate audio to preview, save, or download it."}
+              </small>
             </div>
           </div>
 
+          <audio
+            hidden
+            onEnded={() => setIsPlaying(false)}
+            onLoadedMetadata={(event) =>
+              setAudioDuration(Number(event.currentTarget.duration) || 0)
+            }
+            onPause={() => setIsPlaying(false)}
+            onPlay={() => setIsPlaying(true)}
+            onTimeUpdate={(event) =>
+              setAudioTime(Number(event.currentTarget.currentTime) || 0)
+            }
+            ref={audioRef}
+            src={audioUrl}
+          />
+
           <div className="voice-create-player">
-            <button aria-label="Play latest audio" disabled type="button">
-              <PlayIcon size={16} />
+            <button
+              aria-label={isPlaying ? "Pause latest audio" : "Play latest audio"}
+              disabled={!audioUrl}
+              onClick={togglePlayback}
+              type="button"
+            >
+              {isPlaying ? <PauseIcon size={16} /> : <PlayIcon size={16} />}
             </button>
             <div>
-              <span />
+              <span>
+                <i
+                  style={{
+                    display: "block",
+                    height: "100%",
+                    width: `${progress}%`,
+                    borderRadius: "999px",
+                    background: "var(--vs-accent)"
+                  }}
+                />
+              </span>
               <small>
-                <b>00:00</b>
-                <b>00:00</b>
+                <b>{formatClock(audioTime)}</b>
+                <b>{formatClock(audioDuration)}</b>
               </small>
             </div>
-            <button aria-label="Download latest audio" disabled type="button">
+            <button
+              aria-label="Download latest audio"
+              disabled={!audioUrl}
+              onClick={downloadAudio}
+              type="button"
+            >
               <DownloadIcon size={17} />
             </button>
           </div>
