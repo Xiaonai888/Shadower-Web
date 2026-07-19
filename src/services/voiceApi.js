@@ -2,6 +2,7 @@ import { API_BASE_URL } from "../config/api";
 
 const REQUEST_TIMEOUT_MS = 30000;
 const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+const GENERATE_TIMEOUT_MS = 10 * 60 * 1000;
 
 async function request(path, options = {}) {
   const controller = new AbortController();
@@ -164,4 +165,42 @@ export function deleteVoiceSample(characterId, sampleId) {
     `/api/voice/characters/${characterId}/samples/${sampleId}`,
     { method: "DELETE" }
   );
+}
+
+export async function generateKhmerVoice(payload) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    GENERATE_TIMEOUT_MS
+  );
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/voice/generate`, {
+      ...jsonOptions("POST", payload),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.message || `Voice generation failed (${response.status})`);
+    }
+
+    const audio = await response.blob();
+
+    if (!audio.size) {
+      throw new Error("The voice engine returned an empty audio file");
+    }
+
+    return audio;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error(
+        "Voice generation took too long. Try a shorter Khmer sentence."
+      );
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
